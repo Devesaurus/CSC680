@@ -109,35 +109,50 @@ class ProfileViewModel: ObservableObject {
             DispatchQueue.main.async {
                 let existingData = snapshot?.data() ?? [:]
                 
-                let newProfile = UserProfile(
-                    id: userId,
-                    firstName: existingData["firstName"] as? String ?? "",
-                    lastName: existingData["lastName"] as? String ?? "",
-                    username: existingData["username"] as? String ?? email.components(separatedBy: "@").first ?? "",
-                    email: existingData["email"] as? String ?? email,
-                    profileImageURL: existingData["profileImageURL"] as? String,
-                    bio: existingData["bio"] as? String
-                )
-                
-                let data: [String: Any] = [
-                    "firstName": newProfile.firstName,
-                    "lastName": newProfile.lastName,
-                    "username": newProfile.username,
-                    "email": newProfile.email,
-                    "profileImageURL": newProfile.profileImageURL as Any,
-                    "bio": newProfile.bio as Any,
-                    "createdAt": existingData["createdAt"] ?? FieldValue.serverTimestamp(),
-                    "updatedAt": FieldValue.serverTimestamp()
-                ]
-                
-                self?.db.collection("users").document(userId).setData(data) { [weak self] error in
-                    DispatchQueue.main.async {
-                        if let error = error {
-                            self?.errorMessage = error.localizedDescription
-                        } else {
-                            self?.profile = newProfile
+                // Only create a new profile if the document doesn't exist
+                if snapshot?.exists == false {
+                    let newProfile = UserProfile(
+                        id: userId,
+                        firstName: "",
+                        lastName: "",
+                        username: email.components(separatedBy: "@").first ?? "",
+                        email: email,
+                        profileImageURL: nil,
+                        bio: nil
+                    )
+                    
+                    let data: [String: Any] = [
+                        "firstName": newProfile.firstName,
+                        "lastName": newProfile.lastName,
+                        "username": newProfile.username,
+                        "email": newProfile.email,
+                        "profileImageURL": newProfile.profileImageURL as Any,
+                        "bio": newProfile.bio as Any,
+                        "createdAt": FieldValue.serverTimestamp(),
+                        "updatedAt": FieldValue.serverTimestamp()
+                    ]
+                    
+                    self?.db.collection("users").document(userId).setData(data) { [weak self] error in
+                        DispatchQueue.main.async {
+                            if let error = error {
+                                self?.errorMessage = error.localizedDescription
+                            } else {
+                                self?.profile = newProfile
+                            }
                         }
                     }
+                } else {
+                    // Use existing data
+                    let existingProfile = UserProfile(
+                        id: userId,
+                        firstName: existingData["firstName"] as? String ?? "",
+                        lastName: existingData["lastName"] as? String ?? "",
+                        username: existingData["username"] as? String ?? email.components(separatedBy: "@").first ?? "",
+                        email: existingData["email"] as? String ?? email,
+                        profileImageURL: existingData["profileImageURL"] as? String,
+                        bio: existingData["bio"] as? String
+                    )
+                    self?.profile = existingProfile
                 }
             }
         }

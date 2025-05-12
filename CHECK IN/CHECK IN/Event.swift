@@ -91,6 +91,13 @@ class EventViewModel: ObservableObject {
     
     private let db = Firestore.firestore()
     
+    init() {
+        // Check authentication state on initialization
+        if Auth.auth().currentUser != nil {
+            loadEvents()
+        }
+    }
+    
     func createEvent(name: String, date: Date, description: String) async throws {
         guard let userId = Auth.auth().currentUser?.uid else {
             throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"])
@@ -112,50 +119,41 @@ class EventViewModel: ObservableObject {
     }
     
     func loadEvents() {
-        isLoading = true
-        
         guard let currentUserId = Auth.auth().currentUser?.uid else {
-            isLoading = false
-            errorMessage = "User not authenticated"
+            DispatchQueue.main.async {
+                self.isLoading = false
+                self.errorMessage = "User not authenticated"
+            }
             return
         }
         
-        // First, try to get a single snapshot to check permissions
-        db.collection("events")
-            .limit(to: 1)
-            .getDocuments { [weak self] snapshot, error in
-                if let error = error {
-                    DispatchQueue.main.async {
-                        self?.isLoading = false
-                        self?.errorMessage = "Permission error: \(error.localizedDescription)"
-                    }
-                    return
-                }
-                
-                // If we can read the collection, set up the listener
-                self?.setupEventsListener(currentUserId: currentUserId)
-            }
-    }
-    
-    private func setupEventsListener(currentUserId: String) {
+        DispatchQueue.main.async {
+            self.isLoading = true
+            self.errorMessage = nil
+        }
+        
+        // Set up the events listener directly
         db.collection("events")
             .order(by: "date", descending: false)
             .addSnapshotListener { [weak self] snapshot, error in
+                guard let self = self else { return }
+                
                 DispatchQueue.main.async {
-                    self?.isLoading = false
+                    self.isLoading = false
                     
                     if let error = error {
-                        self?.errorMessage = error.localizedDescription
+                        self.errorMessage = error.localizedDescription
+                        print("Debug: Error loading events: \(error.localizedDescription)")
                         return
                     }
                     
                     guard let documents = snapshot?.documents else {
-                        self?.errorMessage = "No events found"
+                        self.errorMessage = "No events found"
                         return
                     }
                     
                     // Filter events where user is creator or has accepted invitation
-                    self?.events = documents.compactMap { document in
+                    self.events = documents.compactMap { document in
                         guard let event = Event.fromDictionary(document.data(), id: document.documentID) else {
                             return nil
                         }
@@ -165,7 +163,7 @@ class EventViewModel: ObservableObject {
                     }
                     
                     // Load creator names for all events
-                    self?.loadCreatorNames()
+                    self.loadCreatorNames()
                 }
             }
     }
