@@ -127,8 +127,8 @@ struct PageOneView: View {
 struct EventCard: View {
     let event: Event
     let viewModel: EventViewModel
-    @State private var showingDeleteAlert = false
-    @State private var isDeleting = false
+    @State private var showingRemoveAlert = false
+    @State private var isRemoving = false
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -158,16 +158,16 @@ struct EventCard: View {
                 
                 Spacer()
                 
-                // Delete button (only show for events created by current user)
-                if event.createdBy == Auth.auth().currentUser?.uid {
+                // Remove button (show for all events the user is part of)
+                if isUserPartOfEvent {
                     Button(action: {
-                        showingDeleteAlert = true
+                        showingRemoveAlert = true
                     }) {
-                        Image(systemName: "trash")
+                        Image(systemName: "person.fill.xmark")
                             .foregroundColor(.red)
                             .font(.system(size: 18))
                     }
-                    .disabled(isDeleting)
+                    .disabled(isRemoving)
                 }
             }
         }
@@ -177,13 +177,13 @@ struct EventCard: View {
         .cornerRadius(12)
         .shadow(color: .black.opacity(0.05), radius: 5, x: 0, y: 2)
         .padding(.horizontal)
-        .alert("Delete Event", isPresented: $showingDeleteAlert) {
+        .alert("Remove Event", isPresented: $showingRemoveAlert) {
             Button("Cancel", role: .cancel) { }
-            Button("Delete", role: .destructive) {
-                deleteEvent()
+            Button("Remove", role: .destructive) {
+                removeFromEvent()
             }
         } message: {
-            Text("Are you sure you want to delete this event? This action cannot be undone.")
+            Text("Are you sure you want to remove this event from your list? If you're the creator, this will remove your creator status. The event will only be deleted if no users are linked to it.")
         }
     }
     
@@ -194,18 +194,23 @@ struct EventCard: View {
         return formatter.string(from: event.date)
     }
     
-    private func deleteEvent() {
-        isDeleting = true
+    private var isUserPartOfEvent: Bool {
+        guard let currentUserId = Auth.auth().currentUser?.uid else { return false }
+        return event.createdBy == currentUserId || event.acceptedUsers.contains(currentUserId)
+    }
+    
+    private func removeFromEvent() {
+        isRemoving = true
         
         Task {
             do {
                 try await viewModel.deleteEvent(event)
                 await MainActor.run {
-                    isDeleting = false
+                    isRemoving = false
                 }
             } catch {
                 await MainActor.run {
-                    isDeleting = false
+                    isRemoving = false
                     viewModel.errorMessage = error.localizedDescription
                 }
             }
@@ -221,8 +226,8 @@ struct EventDetailView: View {
     @State private var showingInviteSheet = false
     @State private var showingError = false
     @State private var errorMessage = ""
-    @State private var showingDeleteAlert = false
-    @State private var isDeleting = false
+    @State private var showingRemoveAlert = false
+    @State private var isRemoving = false
     @State private var isAccepting = false
     @State private var hasAccepted = false
     
@@ -292,43 +297,47 @@ struct EventDetailView: View {
                         .cornerRadius(12)
                         .padding(.top)
                         .disabled(isAccepting)
-                    } else if hasAccepted {
-                        Text("You have accepted this invitation.")
-                            .foregroundColor(.green)
-                            .font(.subheadline)
-                            .padding(.top)
+                    } else if isUserPartOfEvent {
+                        Button(action: {
+                            showingRemoveAlert = true
+                        }) {
+                            if isRemoving {
+                                ProgressView()
+                                    .progressViewStyle(CircularProgressViewStyle())
+                            } else {
+                                Text("Remove from My Events")
+                                    .font(.headline)
+                                    .frame(maxWidth: .infinity)
+                            }
+                        }
+                        .padding()
+                        .background(Color.red)
+                        .foregroundColor(.white)
+                        .cornerRadius(12)
+                        .padding(.top)
+                        .disabled(isRemoving)
                     }
                     
                     // Invite Button
-                    Button(action: { showingInviteSheet = true }) {
-                        HStack {
-                            Image(systemName: "person.badge.plus")
-                            Text("Invite People")
+                    if event.createdBy == Auth.auth().currentUser?.uid {
+                        Button(action: { showingInviteSheet = true }) {
+                            HStack {
+                                Image(systemName: "person.badge.plus")
+                                Text("Invite People")
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.blue)
+                            .foregroundColor(.white)
+                            .cornerRadius(12)
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(Color.blue)
-                        .foregroundColor(.white)
-                        .cornerRadius(12)
+                        .padding(.top)
                     }
-                    .padding(.top)
                 }
                 .padding()
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    if event.createdBy == Auth.auth().currentUser?.uid {
-                        Button(action: {
-                            showingDeleteAlert = true
-                        }) {
-                            Image(systemName: "trash")
-                                .foregroundColor(.red)
-                        }
-                        .disabled(isDeleting)
-                    }
-                }
-                
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Done") {
                         viewModel.clearSelection()
@@ -345,13 +354,13 @@ struct EventDetailView: View {
             } message: {
                 Text(errorMessage)
             }
-            .alert("Delete Event", isPresented: $showingDeleteAlert) {
+            .alert("Remove Event", isPresented: $showingRemoveAlert) {
                 Button("Cancel", role: .cancel) { }
-                Button("Delete", role: .destructive) {
-                    deleteEvent()
+                Button("Remove", role: .destructive) {
+                    removeFromEvent()
                 }
             } message: {
-                Text("Are you sure you want to delete this event? This action cannot be undone.")
+                Text("Are you sure you want to remove this event from your list? If you're the creator, this will remove your creator status. The event will only be deleted if no users are linked to it.")
             }
             .onDisappear {
                 if !isPresented {
@@ -382,6 +391,11 @@ struct EventDetailView: View {
         return event.invitedUsers.contains(currentUserId) && !event.acceptedUsers.contains(currentUserId) && !hasAccepted
     }
     
+    private var isUserPartOfEvent: Bool {
+        guard let currentUserId = Auth.auth().currentUser?.uid else { return false }
+        return event.createdBy == currentUserId || event.acceptedUsers.contains(currentUserId)
+    }
+    
     private func acceptInvitation() {
         isAccepting = true
         Task {
@@ -401,18 +415,18 @@ struct EventDetailView: View {
         }
     }
     
-    private func deleteEvent() {
-        isDeleting = true
+    private func removeFromEvent() {
+        isRemoving = true
         Task {
             do {
                 try await viewModel.deleteEvent(event)
                 await MainActor.run {
-                    isDeleting = false
+                    isRemoving = false
                     isPresented = false
                 }
             } catch {
                 await MainActor.run {
-                    isDeleting = false
+                    isRemoving = false
                     errorMessage = error.localizedDescription
                     showingError = true
                 }

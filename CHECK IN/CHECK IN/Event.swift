@@ -193,7 +193,38 @@ class EventViewModel: ObservableObject {
     }
     
     func deleteEvent(_ event: Event) async throws {
-        try await db.collection("events").document(event.id).delete()
+        guard let currentUserId = Auth.auth().currentUser?.uid else {
+            throw NSError(domain: "EventError", code: 1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"])
+        }
+        
+        let db = Firestore.firestore()
+        let eventRef = db.collection("events").document(event.id)
+        
+        // If user is the creator, remove them from both arrays
+        if event.createdBy == currentUserId {
+            try await eventRef.updateData([
+                "createdBy": FieldValue.delete(),
+                "acceptedUsers": FieldValue.arrayRemove([currentUserId])
+            ])
+        } else {
+            // If user is not the creator, just remove them from acceptedUsers
+            try await eventRef.updateData([
+                "acceptedUsers": FieldValue.arrayRemove([currentUserId])
+            ])
+        }
+        
+        // Check if event should be deleted (no users linked)
+        let updatedEvent = try await eventRef.getDocument()
+        if let data = updatedEvent.data() {
+            let acceptedUsers = data["acceptedUsers"] as? [String] ?? []
+            let invitedUsers = data["invitedUsers"] as? [String] ?? []
+            let createdBy = data["createdBy"] as? String
+            
+            // If no users are linked to the event, delete it
+            if acceptedUsers.isEmpty && invitedUsers.isEmpty && createdBy == nil {
+                try await eventRef.delete()
+            }
+        }
     }
     
     func updateEvent(_ event: Event) async throws {
@@ -268,25 +299,27 @@ class EventViewModel: ObservableObject {
     
     func acceptInvitation(_ event: Event) async throws {
         guard let currentUserId = Auth.auth().currentUser?.uid else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"])
+            throw NSError(domain: "EventError", code: 1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"])
         }
         
-        // Check if user is invited
-        guard event.invitedUsers.contains(currentUserId) else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "You are not invited to this event"])
+        let db = Firestore.firestore()
+        let eventRef = db.collection("events").document(event.id)
+        
+        try await eventRef.updateData([
+            "acceptedUsers": FieldValue.arrayUnion([currentUserId])
+        ])
+    }
+    
+    func removeFromEvent(_ event: Event) async throws {
+        guard let currentUserId = Auth.auth().currentUser?.uid else {
+            throw NSError(domain: "EventError", code: 1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"])
         }
         
-        // Check if user has already accepted
-        guard !event.acceptedUsers.contains(currentUserId) else {
-            throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "You have already accepted this invitation"])
-        }
+        let db = Firestore.firestore()
+        let eventRef = db.collection("events").document(event.id)
         
-        // Add user to acceptedUsers array
-        var updatedAcceptedUsers = event.acceptedUsers
-        updatedAcceptedUsers.append(currentUserId)
-        
-        try await db.collection("events").document(event.id).updateData([
-            "acceptedUsers": updatedAcceptedUsers
+        try await eventRef.updateData([
+            "acceptedUsers": FieldValue.arrayRemove([currentUserId])
         ])
     }
     
