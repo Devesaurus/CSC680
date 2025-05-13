@@ -203,17 +203,20 @@ class EventViewModel: ObservableObject {
         let db = Firestore.firestore()
         let eventRef = db.collection("events").document(event.id)
         
-        // If user is the creator, remove them from both arrays
-        if event.createdBy == currentUserId {
-            try await eventRef.updateData([
-                "createdBy": FieldValue.delete(),
-                "acceptedUsers": FieldValue.arrayRemove([currentUserId])
-            ])
-        } else {
-            // If user is not the creator, just remove them from acceptedUsers
-            try await eventRef.updateData([
-                "acceptedUsers": FieldValue.arrayRemove([currentUserId])
-            ])
+        // Remove user from both acceptedUsers and invitedUsers arrays
+        try await eventRef.updateData([
+            "acceptedUsers": FieldValue.arrayRemove([currentUserId]),
+            "invitedUsers": FieldValue.arrayRemove([currentUserId])
+        ])
+        
+        // Update local state
+        await MainActor.run {
+            if let index = self.events.firstIndex(where: { $0.id == event.id }) {
+                var updatedEvent = self.events[index]
+                updatedEvent.acceptedUsers.removeAll { $0 == currentUserId }
+                updatedEvent.invitedUsers.removeAll { $0 == currentUserId }
+                self.events[index] = updatedEvent
+            }
         }
         
         // Check if event should be deleted (no users linked)
@@ -311,6 +314,15 @@ class EventViewModel: ObservableObject {
         try await eventRef.updateData([
             "acceptedUsers": FieldValue.arrayUnion([currentUserId])
         ])
+        
+        // Update local state
+        await MainActor.run {
+            if let index = self.events.firstIndex(where: { $0.id == event.id }) {
+                var updatedEvent = self.events[index]
+                updatedEvent.acceptedUsers.append(currentUserId)
+                self.events[index] = updatedEvent
+            }
+        }
     }
     
     func removeFromEvent(_ event: Event) async throws {
@@ -343,6 +355,15 @@ class EventViewModel: ObservableObject {
         try await db.collection("events").document(event.id).updateData([
             "invitedUsers": updatedInvitedUsers
         ])
+        
+        // Update local state
+        await MainActor.run {
+            if let index = self.events.firstIndex(where: { $0.id == event.id }) {
+                var updatedEvent = self.events[index]
+                updatedEvent.invitedUsers.removeAll { $0 == currentUserId }
+                self.events[index] = updatedEvent
+            }
+        }
     }
     
     // Add a method to clear the selected event and any related state

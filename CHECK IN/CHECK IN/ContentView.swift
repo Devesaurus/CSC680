@@ -240,31 +240,6 @@ struct HomeView: View {
     }
 }
 
-struct QuickActionButton: View {
-    let title: String
-    let systemImage: String
-    let color: Color
-    let action: () -> Void
-    
-    var body: some View {
-        Button(action: action) {
-            VStack(spacing: 12) {
-                Image(systemName: systemImage)
-                    .font(.system(size: 24))
-                    .foregroundColor(color)
-                
-                Text(title)
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(.primary)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 16)
-            .background(Color(.secondarySystemBackground))
-            .cornerRadius(12)
-        }
-    }
-}
-
 struct UpcomingEventCard: View {
     let event: Event
     
@@ -312,73 +287,76 @@ struct EventInvitationCard: View {
     @ObservedObject var viewModel: EventViewModel
     @State private var isAccepting = false
     @State private var isDeclining = false
+    @State private var shouldRemove = false
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Event Name
-            Text(event.name)
-                .font(.headline)
-            
-            // Event Date
-            HStack {
-                Image(systemName: "calendar")
-                    .foregroundColor(.blue)
-                Text(formattedDate)
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-            }
-            
-            // Event Description
-            if !event.description.isEmpty {
-                Text(event.description)
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-                    .lineLimit(2)
-            }
-            
-            // Action Buttons
-            HStack(spacing: 12) {
-                Button(action: acceptInvitation) {
-                    if isAccepting {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                    } else {
-                        Text("Accept")
-                            .font(.subheadline)
-                            .fontWeight(.medium)
-                    }
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
-                .background(Color.green)
-                .foregroundColor(.white)
-                .cornerRadius(8)
-                .disabled(isAccepting || isDeclining)
+        if !shouldRemove {
+            VStack(alignment: .leading, spacing: 12) {
+                // Event Name
+                Text(event.name)
+                    .font(.headline)
                 
-                Button(action: declineInvitation) {
-                    if isDeclining {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                    } else {
-                        Text("Decline")
-                            .font(.subheadline)
-                            .fontWeight(.medium)
-                    }
+                // Event Date
+                HStack {
+                    Image(systemName: "calendar")
+                        .foregroundColor(.blue)
+                    Text(formattedDate)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
                 }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
-                .background(Color.red)
-                .foregroundColor(.white)
-                .cornerRadius(8)
-                .disabled(isAccepting || isDeclining)
+                
+                // Event Description
+                if !event.description.isEmpty {
+                    Text(event.description)
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .lineLimit(2)
+                }
+                
+                // Action Buttons
+                HStack(spacing: 12) {
+                    Button(action: acceptInvitation) {
+                        if isAccepting {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                        } else {
+                            Text("Accept")
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                    .background(Color.green)
+                    .foregroundColor(.white)
+                    .cornerRadius(8)
+                    .disabled(isAccepting || isDeclining)
+                    
+                    Button(action: declineInvitation) {
+                        if isDeclining {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                        } else {
+                            Text("Decline")
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                    .background(Color.red)
+                    .foregroundColor(.white)
+                    .cornerRadius(8)
+                    .disabled(isAccepting || isDeclining)
+                }
             }
+            .padding()
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(.systemBackground))
+            .cornerRadius(12)
+            .shadow(color: .black.opacity(0.05), radius: 5, x: 0, y: 2)
+            .padding(.horizontal)
         }
-        .padding()
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.systemBackground))
-        .cornerRadius(12)
-        .shadow(color: .black.opacity(0.05), radius: 5, x: 0, y: 2)
-        .padding(.horizontal)
     }
     
     private var formattedDate: String {
@@ -395,6 +373,7 @@ struct EventInvitationCard: View {
                 try await viewModel.acceptInvitation(event)
                 await MainActor.run {
                     isAccepting = false
+                    shouldRemove = true
                 }
             } catch {
                 await MainActor.run {
@@ -412,6 +391,7 @@ struct EventInvitationCard: View {
                 try await viewModel.declineInvitation(event)
                 await MainActor.run {
                     isDeclining = false
+                    shouldRemove = true
                 }
             } catch {
                 await MainActor.run {
