@@ -183,7 +183,7 @@ struct EventCard: View {
                 removeFromEvent()
             }
         } message: {
-            Text("Are you sure you want to remove this event from your list? If you're the creator, this will remove your creator status. The event will only be deleted if no users are linked to it.")
+            Text("Are you sure you want to remove this event from your list?")
         }
     }
     
@@ -360,7 +360,7 @@ struct EventDetailView: View {
                     removeFromEvent()
                 }
             } message: {
-                Text("Are you sure you want to remove this event from your list? If you're the creator, this will remove your creator status. The event will only be deleted if no users are linked to it.")
+                Text("Are you sure you want to remove this event from your list?")
             }
             .onDisappear {
                 if !isPresented {
