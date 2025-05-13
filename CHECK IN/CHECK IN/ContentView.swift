@@ -6,6 +6,7 @@
 //
 import SwiftUI
 import FirebaseAuth
+import UserNotifications
 
 struct ContentView: View {
     @EnvironmentObject var authVM: AuthViewModel
@@ -13,6 +14,8 @@ struct ContentView: View {
     @StateObject private var profileVM = ProfileViewModel()
     @State private var selectedTab = 0
     @State private var showingCreateEvent = false
+    @State private var showingEventDetail = false
+    @State private var selectedEvent: Event?
 
     var body: some View {
         if authVM.user != nil {
@@ -98,6 +101,17 @@ struct ContentView: View {
                 .onAppear {
                     eventVM.loadEvents()
                     authVM.profileVM = profileVM
+                    requestNotificationPermission()
+                }
+                .sheet(isPresented: $showingEventDetail, onDismiss: {
+                    DispatchQueue.main.async {
+                        selectedEvent = nil
+                        eventVM.clearSelection()
+                    }
+                }) {
+                    if let event = selectedEvent {
+                        EventDetailView(event: event, viewModel: eventVM, isPresented: $showingEventDetail)
+                    }
                 }
             } else {
                 // Profile completion view
@@ -107,10 +121,20 @@ struct ContentView: View {
             LoginView()
         }
     }
+    
+    private func requestNotificationPermission() {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+            if let error = error {
+                print("Error requesting notification permission: \(error.localizedDescription)")
+            }
+        }
+    }
 }
 
 struct HomeView: View {
     @State private var isAnimating = false
+    @State private var selectedEvent: Event?
+    @State private var showingEventDetail = false
     @ObservedObject var profileVM: ProfileViewModel
     @ObservedObject var eventVM: EventViewModel
     
@@ -132,74 +156,54 @@ struct HomeView: View {
                     .padding(.horizontal)
                     
                     // Upcoming Events Section
-                    VStack(alignment: .leading, spacing: 16) {
-                        Text("Upcoming Events")
-                            .font(.headline)
-                            .padding(.horizontal)
-                        
-                        if eventVM.isLoading {
-                            ProgressView()
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                        } else if eventVM.events.isEmpty {
-                            VStack(spacing: 12) {
-                                Image(systemName: "calendar.badge.plus")
-                                    .font(.system(size: 40))
-                                    .foregroundColor(.gray)
-                                Text("No upcoming events")
-                                    .font(.subheadline)
-                                    .foregroundColor(.gray)
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                        } else {
-                            let now = Date()
-                            let upcomingEvents = eventVM.events
-                                .filter { event in
-                                    guard let currentUserId = Auth.auth().currentUser?.uid else { return false }
-                                    return event.date > now && 
-                                           (event.createdBy == currentUserId || event.acceptedUsers.contains(currentUserId))
-                                }
-                                .sorted { $0.date < $1.date }
-                            ForEach(upcomingEvents.prefix(3)) { event in
-                                UpcomingEventCard(event: event)
+                    let upcomingEvents = eventVM.events
+                        .filter { event in
+                            guard let currentUserId = Auth.auth().currentUser?.uid else { return false }
+                            return event.date > Date() && 
+                                   (event.createdBy == currentUserId || event.acceptedUsers.contains(currentUserId))
+                        }
+                        .sorted { $0.date < $1.date }
+                        .prefix(2) // Limit to first 2 events
+                    
+                    if !upcomingEvents.isEmpty {
+                        VStack(alignment: .leading, spacing: 16) {
+                            Text("Upcoming Events")
+                                .font(.headline)
+                                .padding(.horizontal)
+                            ForEach(Array(upcomingEvents)) { event in
+                                EventCard(event: event, viewModel: eventVM)
+                                    .onTapGesture {
+                                        selectedEvent = nil
+                                        DispatchQueue.main.async {
+                                            selectedEvent = event
+                                            showingEventDetail = true
+                                        }
+                                    }
                             }
                         }
+                        .padding(.vertical)
                     }
                     
                     // Event Invitations Section
-                    VStack(alignment: .leading, spacing: 16) {
-                        Text("Event Invitations")
-                            .font(.headline)
-                            .padding(.horizontal)
-                        
-                        if eventVM.isLoading {
-                            ProgressView()
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                        } else {
-                            let pendingInvitations = eventVM.events.filter { event in
-                                guard let currentUserId = Auth.auth().currentUser?.uid else { return false }
-                                return event.invitedUsers.contains(currentUserId) && !event.acceptedUsers.contains(currentUserId)
-                            }
-                            
-                            if pendingInvitations.isEmpty {
-                                VStack(spacing: 12) {
-                                    Image(systemName: "envelope.badge")
-                                        .font(.system(size: 40))
-                                        .foregroundColor(.gray)
-                                    Text("No pending invitations")
-                                        .font(.subheadline)
-                                        .foregroundColor(.gray)
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding()
-                            } else {
-                                ForEach(pendingInvitations) { event in
-                                    EventInvitationCard(event: event, viewModel: eventVM)
-                                }
+                    let pendingInvitations = eventVM.events
+                        .filter { event in
+                            guard let currentUserId = Auth.auth().currentUser?.uid else { return false }
+                            return event.invitedUsers.contains(currentUserId) && 
+                                   !event.acceptedUsers.contains(currentUserId)
+                        }
+                        .sorted { $0.date < $1.date }
+                        .prefix(2) // Limit to first 2 invitations
+                    
+                    if !pendingInvitations.isEmpty {
+                        VStack(alignment: .leading, spacing: 16) {
+                            Text("Event Invitations")
+                                .font(.headline)
+                                .padding(.horizontal)
+                            ForEach(Array(pendingInvitations)) { event in
+                                EventInvitationCard(event: event, viewModel: eventVM)
                             }
                         }
+                        .padding(.vertical)
                     }
                 }
                 .padding(.vertical)
@@ -208,6 +212,16 @@ struct HomeView: View {
             .background(Color(.systemGroupedBackground))
             .onAppear {
                 eventVM.loadEvents()
+            }
+            .sheet(isPresented: $showingEventDetail, onDismiss: {
+                DispatchQueue.main.async {
+                    selectedEvent = nil
+                    eventVM.clearSelection()
+                }
+            }) {
+                if let event = selectedEvent {
+                    EventDetailView(event: event, viewModel: eventVM, isPresented: $showingEventDetail)
+                }
             }
         }
     }

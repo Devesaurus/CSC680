@@ -6,6 +6,7 @@
 //
 import SwiftUI
 import FirebaseAuth
+import FirebaseFirestore
 
 struct PageOneView: View {
     @ObservedObject var viewModel: EventViewModel
@@ -218,6 +219,82 @@ struct EventCard: View {
     }
 }
 
+struct ReminderSheetView: View {
+    let event: Event
+    @Environment(\.dismiss) private var dismiss
+    @StateObject private var viewModel = EventViewModel()
+    @State private var selectedReminderTime: Date
+    @State private var isSettingReminder = false
+    @State private var errorMessage: String?
+    var onReminderSet: () -> Void
+    
+    init(event: Event, onReminderSet: @escaping () -> Void) {
+        self.event = event
+        self.onReminderSet = onReminderSet
+        // Set initial reminder time to 1 hour before event
+        _selectedReminderTime = State(initialValue: Calendar.current.date(byAdding: .hour, value: -1, to: event.date) ?? event.date)
+    }
+    
+    var body: some View {
+        NavigationView {
+            VStack(spacing: 20) {
+                Text("Set Reminder")
+                    .font(.title)
+                    .padding(.top)
+                
+                DatePicker(
+                    "Reminder Time",
+                    selection: $selectedReminderTime,
+                    in: Date()...event.date
+                )
+                .datePickerStyle(.graphical)
+                .padding()
+                
+                if let errorMessage = errorMessage {
+                    Text(errorMessage)
+                        .foregroundColor(.red)
+                        .padding()
+                }
+                
+                Button(action: {
+                    Task {
+                        isSettingReminder = true
+                        errorMessage = nil
+                        
+                        do {
+                            try await viewModel.setReminder(for: event, at: selectedReminderTime)
+                            await MainActor.run {
+                                onReminderSet() // Call the callback to refresh parent view
+                                dismiss() // Dismiss the sheet after setting reminder
+                            }
+                        } catch {
+                            errorMessage = error.localizedDescription
+                        }
+                        
+                        isSettingReminder = false
+                    }
+                }) {
+                    if isSettingReminder {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle())
+                    } else {
+                        Text("Set Reminder")
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(isSettingReminder)
+                .padding()
+                
+                Spacer()
+            }
+            .navigationBarItems(trailing: Button("Cancel") {
+                dismiss()
+            })
+        }
+    }
+}
+
 struct EventDetailView: View {
     let event: Event
     @ObservedObject var viewModel: EventViewModel
@@ -230,6 +307,17 @@ struct EventDetailView: View {
     @State private var isRemoving = false
     @State private var isAccepting = false
     @State private var hasAccepted = false
+    @State private var showingReminderSheet = false
+    @State private var isSettingReminder = false
+    @State private var currentEvent: Event
+    @State private var currentReminderTime: Date?
+    
+    init(event: Event, viewModel: EventViewModel, isPresented: Binding<Bool>) {
+        self.event = event
+        self.viewModel = viewModel
+        self._isPresented = isPresented
+        self._currentEvent = State(initialValue: event)
+    }
     
     var body: some View {
         NavigationView {
@@ -237,7 +325,7 @@ struct EventDetailView: View {
                 VStack(spacing: 24) {
                     // Event Header
                     VStack(spacing: 16) {
-                        Text(event.name)
+                        Text(currentEvent.name)
                             .font(.title)
                             .fontWeight(.bold)
                             .multilineTextAlignment(.center)
@@ -253,13 +341,13 @@ struct EventDetailView: View {
                     .padding(.top)
                     
                     // Event Description
-                    if !event.description.isEmpty {
+                    if !currentEvent.description.isEmpty {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Description")
                                 .font(.headline)
                                 .foregroundColor(.secondary)
                             
-                            Text(event.description)
+                            Text(currentEvent.description)
                                 .font(.body)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -271,8 +359,9 @@ struct EventDetailView: View {
                     
                     // Event Details
                     VStack(alignment: .leading, spacing: 16) {
-                        DetailRow(icon: "person.fill", title: "Created By", value: viewModel.getCreatorName(for: event))
+                        DetailRow(icon: "person.fill", title: "Created By", value: viewModel.getCreatorName(for: currentEvent))
                         DetailRow(icon: "clock.fill", title: "Created", value: formattedCreatedDate)
+                        DetailRow(icon: "bell.fill", title: "Remind me at", value: currentReminderTime.map(formattedReminderTime) ?? "Never")
                     }
                     .padding()
                     .background(Color(.systemBackground))
@@ -298,40 +387,63 @@ struct EventDetailView: View {
                         .padding(.top)
                         .disabled(isAccepting)
                     } else if isUserPartOfEvent {
-                        Button(action: {
-                            showingRemoveAlert = true
-                        }) {
-                            if isRemoving {
-                                ProgressView()
-                                    .progressViewStyle(CircularProgressViewStyle())
-                            } else {
-                                Text("Remove from My Events")
-                                    .font(.headline)
-                                    .frame(maxWidth: .infinity)
+                        VStack(spacing: 16) {
+                            // Reminder Button
+                            Button(action: {
+                                if currentReminderTime != nil {
+                                    removeReminder()
+                                } else {
+                                    showingReminderSheet = true
+                                }
+                            }) {
+                                HStack {
+                                    Image(systemName: currentReminderTime != nil ? "bell.slash.fill" : "bell.fill")
+                                    Text(currentReminderTime != nil ? "Remove Reminder" : "Set Reminder")
+                                }
+                                .font(.headline)
+                                .frame(maxWidth: .infinity)
                             }
-                        }
-                        .padding()
-                        .background(Color.red)
-                        .foregroundColor(.white)
-                        .cornerRadius(12)
-                        .padding(.top)
-                        .disabled(isRemoving)
-                    }
-                    
-                    // Invite Button
-                    if event.createdBy == Auth.auth().currentUser?.uid {
-                        Button(action: { showingInviteSheet = true }) {
-                            HStack {
-                                Image(systemName: "person.badge.plus")
-                                Text("Invite People")
-                            }
-                            .frame(maxWidth: .infinity)
                             .padding()
-                            .background(Color.blue)
+                            .background(Color.orange)
                             .foregroundColor(.white)
                             .cornerRadius(12)
+                            .disabled(isSettingReminder)
+                            
+                            // Remove from Events Button
+                            Button(action: {
+                                showingRemoveAlert = true
+                            }) {
+                                if isRemoving {
+                                    ProgressView()
+                                        .progressViewStyle(CircularProgressViewStyle())
+                                } else {
+                                    Text("Remove from My Events")
+                                        .font(.headline)
+                                        .frame(maxWidth: .infinity)
+                                }
+                            }
+                            .padding()
+                            .background(Color.red)
+                            .foregroundColor(.white)
+                            .cornerRadius(12)
+                            .disabled(isRemoving)
+                            
+                            // Invite Button (only show if user is creator)
+                            if currentEvent.createdBy == Auth.auth().currentUser?.uid {
+                                Button(action: { showingInviteSheet = true }) {
+                                    HStack {
+                                        Image(systemName: "person.badge.plus")
+                                        Text("Invite People")
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                    .padding()
+                                    .background(Color.blue)
+                                    .foregroundColor(.white)
+                                    .cornerRadius(12)
+                                }
+                            }
                         }
-                        .padding(.top)
+                        .padding(.top, 32)
                     }
                 }
                 .padding()
@@ -347,7 +459,13 @@ struct EventDetailView: View {
             }
             .background(Color(.systemGroupedBackground))
             .sheet(isPresented: $showingInviteSheet) {
-                InviteUsersView(event: event, viewModel: viewModel, isPresented: $showingInviteSheet)
+                InviteUsersView(event: currentEvent, viewModel: viewModel, isPresented: $showingInviteSheet)
+            }
+            .sheet(isPresented: $showingReminderSheet) {
+                ReminderSheetView(event: currentEvent) {
+                    // Force a refresh by reloading the reminder time
+                    loadReminderTime()
+                }
             }
             .alert("Error", isPresented: $showingError) {
                 Button("OK", role: .cancel) { }
@@ -361,6 +479,12 @@ struct EventDetailView: View {
                 }
             } message: {
                 Text("Are you sure you want to remove this event from your list?")
+            }
+            .onAppear {
+                loadReminderTime()
+            }
+            .onChange(of: currentEvent.id) { _, _ in
+                loadReminderTime()
             }
             .onDisappear {
                 if !isPresented {
@@ -376,31 +500,31 @@ struct EventDetailView: View {
         let formatter = DateFormatter()
         formatter.dateStyle = .long
         formatter.timeStyle = .short
-        return formatter.string(from: event.date)
+        return formatter.string(from: currentEvent.date)
     }
     
     private var formattedCreatedDate: String {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
         formatter.timeStyle = .short
-        return formatter.string(from: event.createdAt)
+        return formatter.string(from: currentEvent.createdAt)
     }
     
     private var shouldShowAcceptButton: Bool {
         guard let currentUserId = Auth.auth().currentUser?.uid else { return false }
-        return event.invitedUsers.contains(currentUserId) && !event.acceptedUsers.contains(currentUserId) && !hasAccepted
+        return currentEvent.invitedUsers.contains(currentUserId) && !currentEvent.acceptedUsers.contains(currentUserId) && !hasAccepted
     }
     
     private var isUserPartOfEvent: Bool {
         guard let currentUserId = Auth.auth().currentUser?.uid else { return false }
-        return event.createdBy == currentUserId || event.acceptedUsers.contains(currentUserId)
+        return currentEvent.createdBy == currentUserId || currentEvent.acceptedUsers.contains(currentUserId)
     }
     
     private func acceptInvitation() {
         isAccepting = true
         Task {
             do {
-                try await viewModel.acceptInvitation(event)
+                try await viewModel.acceptInvitation(currentEvent)
                 await MainActor.run {
                     isAccepting = false
                     hasAccepted = true
@@ -419,7 +543,7 @@ struct EventDetailView: View {
         isRemoving = true
         Task {
             do {
-                try await viewModel.deleteEvent(event)
+                try await viewModel.deleteEvent(currentEvent)
                 await MainActor.run {
                     isRemoving = false
                     isPresented = false
@@ -427,6 +551,56 @@ struct EventDetailView: View {
             } catch {
                 await MainActor.run {
                     isRemoving = false
+                    errorMessage = error.localizedDescription
+                    showingError = true
+                }
+            }
+        }
+    }
+    
+    private func formattedReminderTime(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
+    }
+    
+    private func loadReminderTime() {
+        guard let currentUserId = Auth.auth().currentUser?.uid else { return }
+        
+        let db = Firestore.firestore()
+        let reminderRef = db.collection("userReminders").document("\(currentUserId)_\(currentEvent.id)")
+        
+        reminderRef.getDocument { snapshot, error in
+            if let data = snapshot?.data(),
+               let reminderTime = (data["reminderTime"] as? Timestamp)?.dateValue() {
+                DispatchQueue.main.async {
+                    self.currentReminderTime = reminderTime
+                }
+            } else {
+                DispatchQueue.main.async {
+                    self.currentReminderTime = nil
+                }
+            }
+        }
+    }
+    
+    private func removeReminder() {
+        isSettingReminder = true
+        print("Removing reminder for event: \(currentEvent.name)")
+        
+        Task {
+            do {
+                try await viewModel.removeReminder(for: currentEvent)
+                await MainActor.run {
+                    print("Successfully removed reminder")
+                    isSettingReminder = false
+                    currentReminderTime = nil
+                }
+            } catch {
+                print("Error removing reminder: \(error.localizedDescription)")
+                await MainActor.run {
+                    isSettingReminder = false
                     errorMessage = error.localizedDescription
                     showingError = true
                 }

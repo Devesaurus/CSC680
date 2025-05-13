@@ -7,6 +7,7 @@
 import SwiftUI
 import FirebaseFirestore
 import FirebaseAuth
+import UserNotifications
 
 struct Event: Identifiable, Equatable {
     var id: String
@@ -20,7 +21,7 @@ struct Event: Identifiable, Equatable {
     var acceptedUsers: [String] // Array of user IDs who have accepted the invitation
     
     var dictionary: [String: Any] {
-        return [
+        [
             "name": name,
             "date": Timestamp(date: date),
             "description": description,
@@ -88,6 +89,7 @@ class EventViewModel: ObservableObject {
     @Published var selectedEvent: Event?
     @Published var searchResults: [AppUser] = []
     @Published var isSearching = false
+    @Published var userReminders: [String: Date] = [:] // eventId: reminderTime
     
     private let db = Firestore.firestore()
     
@@ -95,6 +97,7 @@ class EventViewModel: ObservableObject {
         // Check authentication state on initialization
         if Auth.auth().currentUser != nil {
             loadEvents()
+            loadUserReminders()
         }
     }
     
@@ -349,6 +352,164 @@ class EventViewModel: ObservableObject {
             self.searchResults = []
             self.showingInviteSheet = false
         }
+    }
+    
+    private func loadUserReminders() {
+        guard let currentUserId = Auth.auth().currentUser?.uid else { return }
+        
+        db.collection("userReminders")
+            .whereField("userId", isEqualTo: currentUserId)
+            .addSnapshotListener { [weak self] snapshot, error in
+                guard let self = self else { return }
+                
+                if let error = error {
+                    print("Error loading reminders: \(error.localizedDescription)")
+                    return
+                }
+                
+                var newReminders: [String: Date] = [:]
+                snapshot?.documents.forEach { document in
+                    if let eventId = document.data()["eventId"] as? String,
+                       let reminderTime = (document.data()["reminderTime"] as? Timestamp)?.dateValue() {
+                        newReminders[eventId] = reminderTime
+                    }
+                }
+                
+                DispatchQueue.main.async {
+                    self.userReminders = newReminders
+                }
+            }
+    }
+    
+    func setReminder(for event: Event, at reminderTime: Date) async throws {
+        print("EventViewModel: Starting setReminder for event: \(event.name)")
+        guard let currentUserId = Auth.auth().currentUser?.uid else {
+            print("EventViewModel: User not authenticated")
+            throw NSError(domain: "EventError", code: 1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"])
+        }
+        
+        // Only allow setting reminders for events you're part of
+        guard event.createdBy == currentUserId || event.acceptedUsers.contains(currentUserId) else {
+            print("EventViewModel: User not part of event")
+            throw NSError(domain: "EventError", code: 1, userInfo: [NSLocalizedDescriptionKey: "You can only set reminders for events you're part of"])
+        }
+        
+        // Ensure reminder time is before event time
+        guard reminderTime < event.date else {
+            print("EventViewModel: Reminder time after event time")
+            throw NSError(domain: "EventError", code: 1, userInfo: [NSLocalizedDescriptionKey: "Reminder time must be before the event time"])
+        }
+        
+        print("EventViewModel: Creating reminder document for event: \(event.id)")
+        // Create or update the reminder document first
+        let reminderRef = db.collection("userReminders").document("\(currentUserId)_\(event.id)")
+        do {
+            try await reminderRef.setData([
+                "userId": currentUserId,
+                "eventId": event.id,
+                "reminderTime": Timestamp(date: reminderTime),
+                "updatedAt": Timestamp(date: Date())
+            ])
+            print("EventViewModel: Successfully created reminder document")
+            
+            // Update the local userReminders dictionary immediately
+            await MainActor.run {
+                print("EventViewModel: Updating local reminders dictionary")
+                self.userReminders[event.id] = reminderTime
+                print("EventViewModel: Local reminders dictionary updated")
+            }
+        } catch {
+            print("EventViewModel: Error creating reminder document: \(error.localizedDescription)")
+            throw error
+        }
+        
+        print("EventViewModel: Starting notification permission check")
+        // Handle notification permissions asynchronously
+        Task {
+            print("EventViewModel: Checking notification permissions")
+            let center = UNUserNotificationCenter.current()
+            let settings = await center.notificationSettings()
+            print("EventViewModel: Current notification settings: \(settings.authorizationStatus.rawValue)")
+            
+            if settings.authorizationStatus != .authorized {
+                print("EventViewModel: Requesting notification permission")
+                do {
+                    let granted = try await center.requestAuthorization(options: [.alert, .sound, .badge])
+                    print("EventViewModel: Notification permission response: \(granted)")
+                    if granted {
+                        print("EventViewModel: Notification permission granted")
+                        print("EventViewModel: Scheduling local notification")
+                        scheduleReminder(for: event, at: reminderTime)
+                    } else {
+                        print("EventViewModel: Notification permission denied")
+                    }
+                } catch {
+                    print("EventViewModel: Error requesting permission: \(error.localizedDescription)")
+                }
+            } else {
+                print("EventViewModel: Notification permission already granted")
+                print("EventViewModel: Scheduling local notification")
+                scheduleReminder(for: event, at: reminderTime)
+            }
+        }
+        
+        print("EventViewModel: Successfully completed setReminder")
+    }
+    
+    private func scheduleReminder(for event: Event, at reminderTime: Date) {
+        print("EventViewModel: Starting scheduleReminder for event: \(event.name)")
+        let content = UNMutableNotificationContent()
+        content.title = "Event Reminder"
+        content.body = "\(event.name) is coming up soon!"
+        content.sound = .default
+        
+        let triggerDate = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: reminderTime)
+        let trigger = UNCalendarNotificationTrigger(dateMatching: triggerDate, repeats: false)
+        
+        let request = UNNotificationRequest(
+            identifier: "event-\(event.id)",
+            content: content,
+            trigger: trigger
+        )
+        
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                print("EventViewModel: Error scheduling notification: \(error.localizedDescription)")
+            } else {
+                print("EventViewModel: Successfully scheduled notification")
+            }
+        }
+    }
+    
+    func removeReminder(for event: Event) async throws {
+        guard let currentUserId = Auth.auth().currentUser?.uid else {
+            throw NSError(domain: "EventError", code: 1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"])
+        }
+        
+        // Only allow removing reminders for events you're part of
+        guard event.createdBy == currentUserId || event.acceptedUsers.contains(currentUserId) else {
+            throw NSError(domain: "EventError", code: 1, userInfo: [NSLocalizedDescriptionKey: "You can only remove reminders for events you're part of"])
+        }
+        
+        // Delete the reminder document
+        let reminderRef = db.collection("userReminders").document("\(currentUserId)_\(event.id)")
+        try await reminderRef.delete()
+        
+        // Update the local userReminders dictionary
+        let _ = await MainActor.run {
+            self.userReminders.removeValue(forKey: event.id)
+        }
+        
+        // Remove local notification
+        removeLocalNotification(for: event)
+    }
+    
+    func getReminderTime(for eventId: String) -> Date? {
+        return userReminders[eventId]
+    }
+    
+    private func removeLocalNotification(for event: Event) {
+        UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: ["event-\(event.id)"])
     }
 }
 
