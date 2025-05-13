@@ -1,14 +1,8 @@
-//
-//  LOG_IN.swift
-//  CHECK IN
-//
-//  Created by Deven Young on 5/10/25.
-//
-
 import FirebaseAuth
 import Foundation
 import SwiftUI
 
+// Keeps track of whether a user is logged in
 class AuthViewModel: ObservableObject {
     @Published var user: User?
     @Published var errorMessage: String = ""
@@ -17,7 +11,7 @@ class AuthViewModel: ObservableObject {
     init() {
         self.user = Auth.auth().currentUser
     }
-
+    
     func signUp(email: String, password: String) {
         print("Debug: Attempting to sign up with email: \(email)")
         // First, sign out any existing user

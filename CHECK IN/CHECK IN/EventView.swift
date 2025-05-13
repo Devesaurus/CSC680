@@ -1,14 +1,8 @@
-//
-//  Page_One.swift
-//  CHECK IN
-//
-//  Created by Deven Young on 5/8/25.
-//
 import SwiftUI
 import FirebaseAuth
 import FirebaseFirestore
 
-struct PageOneView: View {
+struct EventList: View {
     @ObservedObject var viewModel: EventViewModel
     @State private var selectedEvent: Event?
     @State private var showingEventDetail = false

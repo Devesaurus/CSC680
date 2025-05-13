@@ -1,9 +1,3 @@
-//
-//  ContentView.swift
-//  CHECK IN
-//
-//  Created by Deven Young on 4/29/25.
-//
 import SwiftUI
 import FirebaseAuth
 import UserNotifications
@@ -16,7 +10,7 @@ struct ContentView: View {
     @State private var showingCreateEvent = false
     @State private var showingEventDetail = false
     @State private var selectedEvent: Event?
-
+    
     var body: some View {
         if authVM.user != nil {
             if profileVM.isLoading {
@@ -32,35 +26,39 @@ struct ContentView: View {
                 // Main app view
                 ZStack {
                     TabView(selection: $selectedTab) {
-                        HomeView(profileVM: profileVM, eventVM: eventVM)
-                            .tabItem {
-                                Image(systemName: "house.fill")
-                                    .foregroundColor(selectedTab == 0 ? .black : .gray)
-                                Text("Home")
-                            }
-                            .tag(0)
+                        NavigationStack {
+                            HomeView(profileVM: profileVM, eventVM: eventVM)
+                        }
+                        .tabItem {
+                            Label("Home", systemImage: "house.fill")
+                        }
+                        .tag(0)
 
-                        PageOneView(viewModel: eventVM)
-                            .tabItem {
-                                Image(systemName: "calendar")
-                                Text("Events")
-                            }
-                            .tag(1)
+                        NavigationStack {
+                            EventList(viewModel: eventVM)
+                        }
+                        .tabItem {
+                            Label("Events", systemImage: "calendar")
+                        }
+                        .tag(1)
                             
-                        FriendsView()
-                            .tabItem {
-                                Image(systemName: "person.2.fill")
-                                Text("Friends")
-                            }
-                            .tag(2)
+                        NavigationStack {
+                            FriendsView()
+                        }
+                        .tabItem {
+                            Label("Friends", systemImage: "person.2.fill")
+                        }
+                        .tag(2)
                             
-                        ProfileView(viewModel: profileVM)
-                            .tabItem {
-                                Image(systemName: "person.circle.fill")
-                                Text("Profile")
-                            }
-                            .tag(3)
+                        NavigationStack {
+                            ProfileView(viewModel: profileVM)
+                        }
+                        .tabItem {
+                            Label("Profile", systemImage: "person.circle.fill")
+                        }
+                        .tag(3)
                     }
+                    .tint(.blue)
                     
                     // Create Event Button
                     VStack {
@@ -593,128 +591,6 @@ struct CreateEventView: View {
                 }
             }
         }
-    }
-}
-
-struct ProfileCompletionView: View {
-    @ObservedObject var profileVM: ProfileViewModel
-    @State private var firstName = ""
-    @State private var lastName = ""
-    @State private var username = ""
-    @State private var showingError = false
-    @State private var errorMessage = ""
-    @State private var isSaving = false
-    @State private var keyboardHeight: CGFloat = 0
-    
-    var body: some View {
-        NavigationView {
-            ScrollView {
-                VStack(spacing: 24) {
-                    // Welcome Message
-                    VStack(spacing: 16) {
-                        Image(systemName: "person.crop.circle.badge.plus")
-                            .font(.system(size: 60))
-                            .foregroundColor(.blue)
-                        
-                        Text("Complete Your Profile")
-                            .font(.title)
-                            .fontWeight(.bold)
-                        
-                        Text("Please provide your information to continue")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                    }
-                    .padding(.top, 40)
-                    
-                    // Profile Form
-                    VStack(spacing: 20) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("First Name")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                            TextField("First Name", text: $firstName)
-                                .textFieldStyle(CustomTextFieldStyle())
-                                .frame(height: 44)
-                        }
-                        
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Last Name")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                            TextField("Last Name", text: $lastName)
-                                .textFieldStyle(CustomTextFieldStyle())
-                                .frame(height: 44)
-                        }
-                        
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Username")
-                                .font(.subheadline)
-                                .foregroundColor(.secondary)
-                            TextField("Username", text: $username)
-                                .textFieldStyle(CustomTextFieldStyle())
-                                .frame(height: 44)
-                        }
-                    }
-                    .padding()
-                    .background(Color(.systemBackground))
-                    .cornerRadius(16)
-                    .shadow(color: .black.opacity(0.05), radius: 5, x: 0, y: 2)
-                    .padding(.horizontal)
-                    
-                    // Save Button
-                    Button(action: saveProfile) {
-                        if isSaving {
-                            ProgressView()
-                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                        } else {
-                            Text("Continue")
-                                .font(.headline)
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding()
-                    .background(isFormValid ? Color.blue : Color.gray)
-                    .foregroundColor(.white)
-                    .cornerRadius(12)
-                    .padding(.horizontal)
-                    .disabled(isSaving || !isFormValid)
-                }
-                .padding(.vertical)
-            }
-            .navigationBarTitleDisplayMode(.inline)
-            .alert("Error", isPresented: $showingError) {
-                Button("OK", role: .cancel) { }
-            } message: {
-                Text(errorMessage)
-            }
-            .onChange(of: profileVM.errorMessage) { _, newValue in
-                if let error = newValue {
-                    errorMessage = error
-                    showingError = true
-                    isSaving = false
-                }
-            }
-            .ignoresSafeArea(.keyboard)
-        }
-    }
-    
-    private var isFormValid: Bool {
-        !firstName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
-        !lastName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
-        !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-    
-    private func saveProfile() {
-        guard isFormValid else { return }
-        
-        isSaving = true
-        
-        profileVM.updateProfile(
-            firstName: firstName.trimmingCharacters(in: .whitespacesAndNewlines),
-            lastName: lastName.trimmingCharacters(in: .whitespacesAndNewlines),
-            username: username.trimmingCharacters(in: .whitespacesAndNewlines),
-            bio: nil
-        )
     }
 }
 

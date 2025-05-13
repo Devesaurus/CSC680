@@ -7,32 +7,36 @@
 import SwiftUI
 
 struct LoginView: View {
+    // State variables for form fields and view state
     @EnvironmentObject var authVM: AuthViewModel
-    @State private var email = ""
-    @State private var password = ""
+    @State private var email = "" // Email
+    @State private var password = "" // Password
     @State private var isSignup = false
-
+    
+    // Login view
     var body: some View {
         VStack(spacing: 20) {
+            // Title that changes based on current mode (Login/Sign Up)
             Text(isSignup ? "Sign Up" : "Login")
                 .font(.largeTitle)
                 .bold()
-
+            
             TextField("Email", text: $email)
                 .autocapitalization(.none)
                 .textFieldStyle(RoundedBorderTextFieldStyle())
                 .padding(.horizontal)
-
+            
             SecureField("Password", text: $password)
                 .textFieldStyle(RoundedBorderTextFieldStyle())
                 .padding(.horizontal)
-
+            
+            // Error message display (if any)
             if !authVM.errorMessage.isEmpty {
                 Text(authVM.errorMessage)
                     .foregroundColor(.red)
                     .padding(.horizontal)
             }
-
+            // Either sign in or sign up
             Button(action: {
                 if isSignup {
                     authVM.signUp(email: email, password: password)
@@ -40,6 +44,7 @@ struct LoginView: View {
                     authVM.signIn(email: email, password: password)
                 }
             }) {
+                // Displays differ based on whether they are creating an account or logging in
                 Text(isSignup ? "Create Account" : "Log In")
                     .frame(maxWidth: .infinity)
                     .padding()
@@ -48,7 +53,7 @@ struct LoginView: View {
                     .cornerRadius(10)
                     .padding(.horizontal)
             }
-
+            
             Button(action: {
                 isSignup.toggle()
             }) {
@@ -59,7 +64,3 @@ struct LoginView: View {
     }
 }
 
-#Preview {
-    LoginView()
-        .environmentObject(AuthViewModel())
-}

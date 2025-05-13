@@ -2,6 +2,8 @@ import SwiftUI
 import FirebaseFirestore
 import FirebaseAuth
 
+// Represents a friend object
+// Users will be able to have friends (other users)
 struct Friend: Identifiable, Codable {
     var id: String
     var name: String
@@ -16,6 +18,7 @@ struct Friend: Identifiable, Codable {
     }
 }
 
+// Friend 
 class FriendViewModel: ObservableObject {
     @Published var friends: [Friend] = []
     @Published var pendingRequests: [Friend] = []

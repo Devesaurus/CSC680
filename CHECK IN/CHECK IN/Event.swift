@@ -1,24 +1,20 @@
-//
-//  Event.swift
-//  CHECK IN
-//
-//  Created by Deven Young on 5/10/25.
-//
 import SwiftUI
 import FirebaseFirestore
 import FirebaseAuth
 import UserNotifications
 
+// Represents an event in the app
 struct Event: Identifiable, Equatable {
-    var id: String
-    var name: String
-    var date: Date
-    var description: String
-    var createdBy: String
-    var createdAt: Date
-    var creatorName: String?
-    var invitedUsers: [String] // Array of user IDs who are invited
-    var acceptedUsers: [String] // Array of user IDs who have accepted the invitation
+    var id: String // Event ID for Database
+    var name: String // Event name
+    var date: Date // Date of the event
+    var description: String // Description of the event
+    var createdBy: String // Who created the event
+    var createdAt: Date // When was the event created
+    var creatorName: String? // Creator's name
+    var invitedUsers: [String] // Array to store invited users
+    var acceptedUsers: [String] // Array of users who have accepted invitations
+    
     
     var dictionary: [String: Any] {
         [
@@ -70,6 +66,7 @@ struct Event: Identifiable, Equatable {
     }
 }
 
+// Represents a user in the app
 struct AppUser: Identifiable {
     let id: String
     let firstName: String
@@ -80,7 +77,9 @@ struct AppUser: Identifiable {
     }
 }
 
+// Manages event operations and views
 class EventViewModel: ObservableObject {
+    // Published properties for UI updates
     @Published var events: [Event] = []
     @Published var isLoading = false
     @Published var errorMessage: String?
@@ -94,14 +93,15 @@ class EventViewModel: ObservableObject {
     private let db = Firestore.firestore()
     
     init() {
-        // Check authentication state on initialization
+        // Initialize and load data if user is authenticated
         if Auth.auth().currentUser != nil {
             loadEvents()
             loadUserReminders()
         }
     }
     
-    func createEvent(name: String, date: Date, description: String) async throws {
+        // Create an event
+        func createEvent(name: String, date: Date, description: String) async throws {
         guard let userId = Auth.auth().currentUser?.uid else {
             throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"])
         }
@@ -121,6 +121,7 @@ class EventViewModel: ObservableObject {
         try await db.collection("events").document(event.id).setData(event.dictionary)
     }
     
+    // Loads the events for the current user
     func loadEvents() {
         guard let currentUserId = Auth.auth().currentUser?.uid else {
             DispatchQueue.main.async {
@@ -135,7 +136,7 @@ class EventViewModel: ObservableObject {
             self.errorMessage = nil
         }
         
-        // Set up the events listener directly
+        // Set up listener for events
         db.collection("events")
             .order(by: "date", descending: false)
             .addSnapshotListener { [weak self] snapshot, error in
@@ -155,13 +156,12 @@ class EventViewModel: ObservableObject {
                         return
                     }
                     
-                    // Filter events where user is creator, has accepted invitation, or is invited
+                    // Filter events for current user
                     self.events = documents.compactMap { document in
                         guard let event = Event.fromDictionary(document.data(), id: document.documentID) else {
                             return nil
                         }
                         
-                        // Include event if user is creator, has accepted invitation, or is invited
                         return (event.createdBy == currentUserId || 
                                 event.acceptedUsers.contains(currentUserId) || 
                                 event.invitedUsers.contains(currentUserId)) ? event : nil
@@ -172,7 +172,8 @@ class EventViewModel: ObservableObject {
                 }
             }
     }
-    
+        
+    // Load creator names for the events
     private func loadCreatorNames() {
         let creatorIds = Set(events.map { $0.createdBy })
         
@@ -191,10 +192,12 @@ class EventViewModel: ObservableObject {
         }
     }
     
+    // Gets the creator name for an event
     func getCreatorName(for event: Event) -> String {
         return creatorNames[event.createdBy] ?? "Loading..."
     }
-    
+        
+    // Deletes an event
     func deleteEvent(_ event: Event) async throws {
         guard let currentUserId = Auth.auth().currentUser?.uid else {
             throw NSError(domain: "EventError", code: 1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"])
@@ -204,6 +207,7 @@ class EventViewModel: ObservableObject {
         let eventRef = db.collection("events").document(event.id)
         
         // Remove user from both acceptedUsers and invitedUsers arrays
+        // to make sure it disappears on the home page as well
         try await eventRef.updateData([
             "acceptedUsers": FieldValue.arrayRemove([currentUserId]),
             "invitedUsers": FieldValue.arrayRemove([currentUserId])
@@ -219,40 +223,40 @@ class EventViewModel: ObservableObject {
             }
         }
         
-        // Check if event should be deleted (no users linked)
+        // An event should be deleted if there are no users tied to it
         let updatedEvent = try await eventRef.getDocument()
         if let data = updatedEvent.data() {
             let acceptedUsers = data["acceptedUsers"] as? [String] ?? []
             let invitedUsers = data["invitedUsers"] as? [String] ?? []
             let createdBy = data["createdBy"] as? String
             
-            // If no users are linked to the event, delete it
             if acceptedUsers.isEmpty && invitedUsers.isEmpty && createdBy == nil {
                 try await eventRef.delete()
             }
         }
     }
     
+    // Updates an event
     func updateEvent(_ event: Event) async throws {
         try await db.collection("events").document(event.id).updateData(event.dictionary)
     }
     
+    // Invites a user to an event
     func inviteUser(_ user: AppUser, to event: Event) async throws {
         guard let currentUser = Auth.auth().currentUser else {
             throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"])
         }
         
-        // Check if user is already invited
+        // Validate invitation
         if event.invitedUsers.contains(user.id) {
             throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "User is already invited"])
         }
         
-        // Check if user is inviting themselves
         if user.id == currentUser.uid {
             throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "You cannot invite yourself to an event"])
         }
         
-        // Update the event with the new invited user
+        // Update event with new invited user
         var updatedInvitedUsers = event.invitedUsers
         updatedInvitedUsers.append(user.id)
         
@@ -260,7 +264,7 @@ class EventViewModel: ObservableObject {
             "invitedUsers": updatedInvitedUsers
         ])
         
-        // Create a notification for the invited user
+        // Create notification for invited user
         try await db.collection("notifications").addDocument(data: [
             "type": "event_invite",
             "eventId": event.id,
@@ -271,6 +275,7 @@ class EventViewModel: ObservableObject {
         ])
     }
     
+    // Searches for users to invite
     func searchUsers(query: String) {
         guard !query.isEmpty else {
             searchResults = []
@@ -279,6 +284,7 @@ class EventViewModel: ObservableObject {
         
         isSearching = true
         
+        // Runs through the database
         db.collection("users")
             .whereField("firstName", isGreaterThanOrEqualTo: query)
             .whereField("firstName", isLessThanOrEqualTo: query + "\u{f8ff}")
@@ -303,6 +309,7 @@ class EventViewModel: ObservableObject {
             }
     }
     
+    // Accepts an invitation to an event (adds it to their account)
     func acceptInvitation(_ event: Event) async throws {
         guard let currentUserId = Auth.auth().currentUser?.uid else {
             throw NSError(domain: "EventError", code: 1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"])
@@ -325,6 +332,7 @@ class EventViewModel: ObservableObject {
         }
     }
     
+    // Removes an event from a users account
     func removeFromEvent(_ event: Event) async throws {
         guard let currentUserId = Auth.auth().currentUser?.uid else {
             throw NSError(domain: "EventError", code: 1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"])
@@ -338,12 +346,13 @@ class EventViewModel: ObservableObject {
         ])
     }
     
+    // Removes an event from a users invited list
     func declineInvitation(_ event: Event) async throws {
         guard let currentUserId = Auth.auth().currentUser?.uid else {
             throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"])
         }
         
-        // Check if user is invited
+        // Validate invitation
         guard event.invitedUsers.contains(currentUserId) else {
             throw NSError(domain: "", code: -1, userInfo: [NSLocalizedDescriptionKey: "You are not invited to this event"])
         }
@@ -366,7 +375,7 @@ class EventViewModel: ObservableObject {
         }
     }
     
-    // Add a method to clear the selected event and any related state
+    // Clear UI state
     func clearSelection() {
         DispatchQueue.main.async {
             self.selectedEvent = nil
@@ -374,7 +383,8 @@ class EventViewModel: ObservableObject {
             self.showingInviteSheet = false
         }
     }
-    
+        
+    // Loads reminders for events (user specific)
     private func loadUserReminders() {
         guard let currentUserId = Auth.auth().currentUser?.uid else { return }
         
@@ -402,6 +412,7 @@ class EventViewModel: ObservableObject {
             }
     }
     
+    // Allows users to set reminders for certain events
     func setReminder(for event: Event, at reminderTime: Date) async throws {
         print("EventViewModel: Starting setReminder for event: \(event.name)")
         guard let currentUserId = Auth.auth().currentUser?.uid else {
@@ -409,20 +420,18 @@ class EventViewModel: ObservableObject {
             throw NSError(domain: "EventError", code: 1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"])
         }
         
-        // Only allow setting reminders for events you're part of
+        // Validate reminder
         guard event.createdBy == currentUserId || event.acceptedUsers.contains(currentUserId) else {
             print("EventViewModel: User not part of event")
             throw NSError(domain: "EventError", code: 1, userInfo: [NSLocalizedDescriptionKey: "You can only set reminders for events you're part of"])
         }
         
-        // Ensure reminder time is before event time
         guard reminderTime < event.date else {
             print("EventViewModel: Reminder time after event time")
             throw NSError(domain: "EventError", code: 1, userInfo: [NSLocalizedDescriptionKey: "Reminder time must be before the event time"])
         }
         
-        print("EventViewModel: Creating reminder document for event: \(event.id)")
-        // Create or update the reminder document first
+        // Create or update reminder
         let reminderRef = db.collection("userReminders").document("\(currentUserId)_\(event.id)")
         do {
             try await reminderRef.setData([
@@ -433,7 +442,7 @@ class EventViewModel: ObservableObject {
             ])
             print("EventViewModel: Successfully created reminder document")
             
-            // Update the local userReminders dictionary immediately
+            // Update local state
             await MainActor.run {
                 print("EventViewModel: Updating local reminders dictionary")
                 self.userReminders[event.id] = reminderTime
@@ -444,8 +453,7 @@ class EventViewModel: ObservableObject {
             throw error
         }
         
-        print("EventViewModel: Starting notification permission check")
-        // Handle notification permissions asynchronously
+        // Handle notification permissions
         Task {
             print("EventViewModel: Checking notification permissions")
             let center = UNUserNotificationCenter.current()
@@ -477,6 +485,7 @@ class EventViewModel: ObservableObject {
         print("EventViewModel: Successfully completed setReminder")
     }
     
+    // Schedules a local notification based on a reminder
     private func scheduleReminder(for event: Event, at reminderTime: Date) {
         print("EventViewModel: Starting scheduleReminder for event: \(event.name)")
         let content = UNMutableNotificationContent()
@@ -502,21 +511,22 @@ class EventViewModel: ObservableObject {
         }
     }
     
+    // Removes a reminder for an event
     func removeReminder(for event: Event) async throws {
         guard let currentUserId = Auth.auth().currentUser?.uid else {
             throw NSError(domain: "EventError", code: 1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"])
         }
         
-        // Only allow removing reminders for events you're part of
+        // Validate reminder removal
         guard event.createdBy == currentUserId || event.acceptedUsers.contains(currentUserId) else {
             throw NSError(domain: "EventError", code: 1, userInfo: [NSLocalizedDescriptionKey: "You can only remove reminders for events you're part of"])
         }
         
-        // Delete the reminder document
+        // Delete reminder document
         let reminderRef = db.collection("userReminders").document("\(currentUserId)_\(event.id)")
         try await reminderRef.delete()
         
-        // Update the local userReminders dictionary
+        // Update local state
         let _ = await MainActor.run {
             self.userReminders.removeValue(forKey: event.id)
         }
@@ -525,10 +535,12 @@ class EventViewModel: ObservableObject {
         removeLocalNotification(for: event)
     }
     
+    // Gets the user reminder time for an event
     func getReminderTime(for eventId: String) -> Date? {
         return userReminders[eventId]
     }
     
+    // Removes local notification for an event
     private func removeLocalNotification(for event: Event) {
         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: ["event-\(event.id)"])
     }
