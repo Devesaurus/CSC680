@@ -87,14 +87,8 @@ class ProfileViewModel: ObservableObject {
                         bio: data["bio"] as? String
                     )
                     
-                    // If any required field is empty, create a new profile
-                    if firstName.isEmpty || lastName.isEmpty || username.isEmpty {
-                        print("Debug: Profile is incomplete, creating new profile")
-                        self.createNewProfile(userId: userId, email: email)
-                    } else {
-                        print("Debug: Profile is complete")
-                        self.profile = newProfile
-                    }
+                    // Always use the existing profile data
+                    self.profile = newProfile
                 } else {
                     print("Debug: No profile found, creating new profile")
                     self.createNewProfile(userId: userId, email: email)

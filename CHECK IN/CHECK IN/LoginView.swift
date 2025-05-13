@@ -23,10 +23,12 @@ struct LoginView: View {
             
             TextField("Email", text: $email)
                 .autocapitalization(.none)
+                .textContentType(.emailAddress)
                 .textFieldStyle(RoundedBorderTextFieldStyle())
                 .padding(.horizontal)
             
             SecureField("Password", text: $password)
+                .textContentType(isSignup ? .newPassword : .password)
                 .textFieldStyle(RoundedBorderTextFieldStyle())
                 .padding(.horizontal)
             
@@ -61,6 +63,12 @@ struct LoginView: View {
                     .font(.footnote)
             }
         }
+        .padding()
     }
+}
+
+#Preview {
+    LoginView()
+        .environmentObject(AuthViewModel())
 }
 
