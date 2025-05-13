@@ -37,8 +37,20 @@ struct PageOneView: View {
                         .padding(.top, 50)
                     } else {
                         let now = Date()
-                        let upcomingEvents = viewModel.events.filter { $0.date >= now }.sorted { $0.date < $1.date }
-                        let pastEvents = viewModel.events.filter { $0.date < now }.sorted { $0.date > $1.date }
+                        let upcomingEvents = viewModel.events
+                            .filter { event in
+                                guard let currentUserId = Auth.auth().currentUser?.uid else { return false }
+                                return event.date >= now && 
+                                       (event.createdBy == currentUserId || event.acceptedUsers.contains(currentUserId))
+                            }
+                            .sorted { $0.date < $1.date }
+                        let pastEvents = viewModel.events
+                            .filter { event in
+                                guard let currentUserId = Auth.auth().currentUser?.uid else { return false }
+                                return event.date < now && 
+                                       (event.createdBy == currentUserId || event.acceptedUsers.contains(currentUserId))
+                            }
+                            .sorted { $0.date > $1.date }
                         
                         VStack(spacing: 24) {
                             // Upcoming Events Section

@@ -152,14 +152,16 @@ class EventViewModel: ObservableObject {
                         return
                     }
                     
-                    // Filter events where user is creator or has accepted invitation
+                    // Filter events where user is creator, has accepted invitation, or is invited
                     self.events = documents.compactMap { document in
                         guard let event = Event.fromDictionary(document.data(), id: document.documentID) else {
                             return nil
                         }
                         
-                        // Include event if user is creator or has accepted invitation
-                        return (event.createdBy == currentUserId || event.acceptedUsers.contains(currentUserId)) ? event : nil
+                        // Include event if user is creator, has accepted invitation, or is invited
+                        return (event.createdBy == currentUserId || 
+                                event.acceptedUsers.contains(currentUserId) || 
+                                event.invitedUsers.contains(currentUserId)) ? event : nil
                     }
                     
                     // Load creator names for all events

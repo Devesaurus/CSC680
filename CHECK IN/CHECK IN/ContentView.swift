@@ -5,6 +5,7 @@
 //  Created by Deven Young on 4/29/25.
 //
 import SwiftUI
+import FirebaseAuth
 
 struct ContentView: View {
     @EnvironmentObject var authVM: AuthViewModel
@@ -130,36 +131,6 @@ struct HomeView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal)
                     
-                    // Quick Actions Card
-                    VStack(spacing: 16) {
-                        Text("Quick Actions")
-                            .font(.headline)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        
-                        HStack(spacing: 16) {
-                            QuickActionButton(
-                                title: "Check In",
-                                systemImage: "checkmark.circle.fill",
-                                color: .blue
-                            ) {
-                                // Add check in action
-                            }
-                            
-                            QuickActionButton(
-                                title: "Events",
-                                systemImage: "calendar",
-                                color: .green
-                            ) {
-                                // Add events action
-                            }
-                        }
-                    }
-                    .padding()
-                    .background(Color(.systemBackground))
-                    .cornerRadius(16)
-                    .shadow(color: Color.black.opacity(0.1), radius: 10, x: 0, y: 5)
-                    .padding(.horizontal)
-                    
                     // Upcoming Events Section
                     VStack(alignment: .leading, spacing: 16) {
                         Text("Upcoming Events")
@@ -183,9 +154,50 @@ struct HomeView: View {
                             .padding()
                         } else {
                             let now = Date()
-                            let upcomingEvents = eventVM.events.filter { $0.date > now }.sorted { $0.date < $1.date }
+                            let upcomingEvents = eventVM.events
+                                .filter { event in
+                                    guard let currentUserId = Auth.auth().currentUser?.uid else { return false }
+                                    return event.date > now && 
+                                           (event.createdBy == currentUserId || event.acceptedUsers.contains(currentUserId))
+                                }
+                                .sorted { $0.date < $1.date }
                             ForEach(upcomingEvents.prefix(3)) { event in
                                 UpcomingEventCard(event: event)
+                            }
+                        }
+                    }
+                    
+                    // Event Invitations Section
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("Event Invitations")
+                            .font(.headline)
+                            .padding(.horizontal)
+                        
+                        if eventVM.isLoading {
+                            ProgressView()
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                        } else {
+                            let pendingInvitations = eventVM.events.filter { event in
+                                guard let currentUserId = Auth.auth().currentUser?.uid else { return false }
+                                return event.invitedUsers.contains(currentUserId) && !event.acceptedUsers.contains(currentUserId)
+                            }
+                            
+                            if pendingInvitations.isEmpty {
+                                VStack(spacing: 12) {
+                                    Image(systemName: "envelope.badge")
+                                        .font(.system(size: 40))
+                                        .foregroundColor(.gray)
+                                    Text("No pending invitations")
+                                        .font(.subheadline)
+                                        .foregroundColor(.gray)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding()
+                            } else {
+                                ForEach(pendingInvitations) { event in
+                                    EventInvitationCard(event: event, viewModel: eventVM)
+                                }
                             }
                         }
                     }
@@ -278,6 +290,122 @@ struct UpcomingEventCard: View {
         formatter.dateStyle = .medium
         formatter.timeStyle = .short
         return formatter.string(from: event.date)
+    }
+}
+
+struct EventInvitationCard: View {
+    let event: Event
+    @ObservedObject var viewModel: EventViewModel
+    @State private var isAccepting = false
+    @State private var isDeclining = false
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Event Name
+            Text(event.name)
+                .font(.headline)
+            
+            // Event Date
+            HStack {
+                Image(systemName: "calendar")
+                    .foregroundColor(.blue)
+                Text(formattedDate)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+            }
+            
+            // Event Description
+            if !event.description.isEmpty {
+                Text(event.description)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .lineLimit(2)
+            }
+            
+            // Action Buttons
+            HStack(spacing: 12) {
+                Button(action: acceptInvitation) {
+                    if isAccepting {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                    } else {
+                        Text("Accept")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+                .background(Color.green)
+                .foregroundColor(.white)
+                .cornerRadius(8)
+                .disabled(isAccepting || isDeclining)
+                
+                Button(action: declineInvitation) {
+                    if isDeclining {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                    } else {
+                        Text("Decline")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+                .background(Color.red)
+                .foregroundColor(.white)
+                .cornerRadius(8)
+                .disabled(isAccepting || isDeclining)
+            }
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(.systemBackground))
+        .cornerRadius(12)
+        .shadow(color: .black.opacity(0.05), radius: 5, x: 0, y: 2)
+        .padding(.horizontal)
+    }
+    
+    private var formattedDate: String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter.string(from: event.date)
+    }
+    
+    private func acceptInvitation() {
+        isAccepting = true
+        Task {
+            do {
+                try await viewModel.acceptInvitation(event)
+                await MainActor.run {
+                    isAccepting = false
+                }
+            } catch {
+                await MainActor.run {
+                    isAccepting = false
+                    // Handle error if needed
+                }
+            }
+        }
+    }
+    
+    private func declineInvitation() {
+        isDeclining = true
+        Task {
+            do {
+                try await viewModel.declineInvitation(event)
+                await MainActor.run {
+                    isDeclining = false
+                }
+            } catch {
+                await MainActor.run {
+                    isDeclining = false
+                    // Handle error if needed
+                }
+            }
+        }
     }
 }
 
