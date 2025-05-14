@@ -199,7 +199,7 @@ struct EventCard: View {
         
         Task {
             do {
-                try await viewModel.deleteEvent(event)
+                try await viewModel.leaveEvent(event)
                 await MainActor.run {
                     isRemoving = false
                 }
@@ -537,7 +537,7 @@ struct EventDetailView: View {
         isRemoving = true
         Task {
             do {
-                try await viewModel.deleteEvent(currentEvent)
+                try await viewModel.leaveEvent(currentEvent)
                 await MainActor.run {
                     isRemoving = false
                     isPresented = false

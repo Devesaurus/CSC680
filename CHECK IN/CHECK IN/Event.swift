@@ -197,43 +197,61 @@ class EventViewModel: ObservableObject {
         return creatorNames[event.createdBy] ?? "Loading..."
     }
         
-    // Deletes an event
-    func deleteEvent(_ event: Event) async throws {
+    // Allows a user to leave an event, and potentially deletes the event if orphaned or if the creator leaves.
+    func leaveEvent(_ event: Event) async throws {
         guard let currentUserId = Auth.auth().currentUser?.uid else {
             throw NSError(domain: "EventError", code: 1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"])
         }
         
-        let db = Firestore.firestore()
         let eventRef = db.collection("events").document(event.id)
         
-        // Remove user from both acceptedUsers and invitedUsers arrays
-        // to make sure it disappears on the home page as well
+        // Step 1: Update Firestore by removing the user from accepted and invited lists.
+        // This will trigger the snapshot listener in loadEvents to re-evaluate.
         try await eventRef.updateData([
             "acceptedUsers": FieldValue.arrayRemove([currentUserId]),
             "invitedUsers": FieldValue.arrayRemove([currentUserId])
         ])
         
-        // Update local state
-        await MainActor.run {
-            if let index = self.events.firstIndex(where: { $0.id == event.id }) {
-                var updatedEvent = self.events[index]
-                updatedEvent.acceptedUsers.removeAll { $0 == currentUserId }
-                updatedEvent.invitedUsers.removeAll { $0 == currentUserId }
-                self.events[index] = updatedEvent
-            }
+        // Step 2: Check if the event should be deleted.
+        // Re-fetch the event data AFTER the update to check its current state.
+        let updatedEventSnapshot = try await eventRef.getDocument()
+        
+        // If the document doesn't exist after the update (e.g., already deleted by another process, or if the update itself led to its removal somehow),
+        // the snapshot listener will handle it. Nothing more to do here for deletion.
+        guard updatedEventSnapshot.exists, let updatedEventData = updatedEventSnapshot.data() else {
+            print("Event document \(event.id) no longer exists or has no data after user removal attempt. Snapshot listener should handle UI.")
+            return
         }
         
-        // An event should be deleted if there are no users tied to it
-        let updatedEvent = try await eventRef.getDocument()
-        if let data = updatedEvent.data() {
-            let acceptedUsers = data["acceptedUsers"] as? [String] ?? []
-            let invitedUsers = data["invitedUsers"] as? [String] ?? []
-            let createdBy = data["createdBy"] as? String
-            
-            if acceptedUsers.isEmpty && invitedUsers.isEmpty && createdBy == nil {
-                try await eventRef.delete()
-            }
+        let currentAcceptedUsers = updatedEventData["acceptedUsers"] as? [String] ?? []
+        let currentInvitedUsers = updatedEventData["invitedUsers"] as? [String] ?? []
+        let creatorId = updatedEventData["createdBy"] as? String
+        
+        // Define conditions for deleting the event:
+        // 1. If the current user is the creator, their leaving implies deleting the event.
+        // 2. OR If the event has no specific creator (creatorId is nil or empty) AND no one is accepted or invited, it's orphaned.
+        let isCreatorLeaving = creatorId == currentUserId
+        let isOrphanedWithNoAttendees = (creatorId == nil || creatorId!.isEmpty) && currentAcceptedUsers.isEmpty && currentInvitedUsers.isEmpty
+        // More precise: Delete if creator leaves, OR if it's orphaned (no creator AND no attendees/invitees)
+        // OR if it's not created by anyone, and last person leaves. The previous logic covered this, let's stick to creator leaving or truly orphaned for clarity
+        
+        var shouldDeleteEvent = false
+        if isCreatorLeaving {
+            shouldDeleteEvent = true
+        } else if (creatorId == nil || creatorId!.isEmpty) && currentAcceptedUsers.isEmpty && currentInvitedUsers.isEmpty {
+            // If no designated creator, and it's now empty, it's orphaned.
+            shouldDeleteEvent = true
         }
+        // If there IS a creator, and the current user is NOT the creator, the event is NOT deleted just because the last attendee leaves.
+        // It remains for the creator.
+        
+        if shouldDeleteEvent {
+            print("Deleting event \(event.id) as it meets deletion criteria.")
+            try await eventRef.delete()
+            // The snapshot listener in loadEvents will see the deletion and remove it from self.events.
+        }
+        // No direct local manipulation of self.events is needed here.
+        // The snapshot listener is the source of truth for the UI.
     }
     
     // Updates an event

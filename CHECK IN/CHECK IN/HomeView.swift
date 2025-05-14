@@ -19,7 +19,7 @@ struct HomeView: View {
                             .foregroundColor(.primary)
                         
                         Text(formattedDate)
-                            .font(.system(size: 17, weight: .medium))
+                            .font(.system(size: 20, weight: .medium))
                             .foregroundColor(.secondary)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -35,11 +35,27 @@ struct HomeView: View {
                         .sorted { $0.date < $1.date }
                         .prefix(2) // Limit to first 2 events
                     
-                    if !upcomingEvents.isEmpty {
-                        VStack(alignment: .leading, spacing: 16) {
-                            Text("Upcoming Events")
-                                .font(.headline)
-                                .padding(.horizontal)
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("Upcoming Events")
+                            .font(.title3)
+                            .padding(.horizontal)
+
+                        if upcomingEvents.isEmpty {
+                            ZStack {
+                                Image(systemName: "calendar.badge.plus")
+                                    .font(.system(size: 80))
+                                    .foregroundColor(Color.gray.opacity(0.1))
+                                Text("No upcoming events yet.")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                                    .multilineTextAlignment(.center)
+                                    .padding()
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 150)
+                            .background(Color(.systemGray6))
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .padding(.horizontal)
+                        } else {
                             ForEach(Array(upcomingEvents)) { event in
                                 EventCard(event: event, viewModel: eventVM)
                                     .onTapGesture {
@@ -51,8 +67,8 @@ struct HomeView: View {
                                     }
                             }
                         }
-                        .padding(.vertical)
                     }
+                    .padding(.vertical)
                     
                     // Event Invitations Section
                     let pendingInvitations = eventVM.events
@@ -64,17 +80,33 @@ struct HomeView: View {
                         .sorted { $0.date < $1.date }
                         .prefix(2) // Limit to first 2 invitations
                     
-                    if !pendingInvitations.isEmpty {
-                        VStack(alignment: .leading, spacing: 16) {
-                            Text("Event Invitations")
-                                .font(.headline)
-                                .padding(.horizontal)
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("Event Invitations")
+                            .font(.title3)
+                            .padding(.horizontal)
+
+                        if pendingInvitations.isEmpty {
+                            ZStack {
+                                Image(systemName: "envelope.open.badge.clock")
+                                    .font(.system(size: 80))
+                                    .foregroundColor(Color.gray.opacity(0.1))
+                                Text("No pending invitations at the moment.")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                                    .multilineTextAlignment(.center)
+                                    .padding()
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 150)
+                            .background(Color(.systemGray6))
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .padding(.horizontal)
+                        } else {
                             ForEach(Array(pendingInvitations)) { event in
                                 EventInvitationCard(event: event, viewModel: eventVM)
                             }
                         }
-                        .padding(.vertical)
                     }
+                    .padding(.vertical)
                 }
                 .padding(.vertical)
             }
@@ -108,4 +140,8 @@ struct HomeView: View {
         formatter.dateFormat = "EEEE, MMM d, yyyy"
         return formatter.string(from: Date())
     }
+}
+
+#Preview {
+    HomeView(profileVM: ProfileViewModel(), eventVM: EventViewModel()).environmentObject(AuthViewModel())
 }

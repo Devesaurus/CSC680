@@ -283,118 +283,116 @@ struct FriendsView: View {
     @State private var showingAddFriend = false
     
     var body: some View {
-        NavigationView {
-            VStack(spacing: 0) {
-                if showingSearchResults {
-                    // Search Results
-                    List(viewModel.searchResults) { user in
-                        HStack {
-                            VStack(alignment: .leading) {
-                                Text(user.name)
-                                    .font(.headline)
-                                Text(user.email)
-                                    .font(.subheadline)
-                                    .foregroundColor(.gray)
-                            }
-                            
-                            Spacer()
-                            
-                            if viewModel.sentRequests.contains(user.id) {
-                                Text("Pending")
-                                    .foregroundColor(.gray)
-                                    .font(.subheadline)
-                            } else {
-                                Button(action: {
-                                    viewModel.sendFriendRequest(to: user)
-                                }) {
-                                    Text("Add Friend")
-                                        .foregroundColor(.blue)
-                                }
+        VStack(spacing: 0) {
+            if showingSearchResults {
+                // Search Results
+                List(viewModel.searchResults) { user in
+                    HStack {
+                        VStack(alignment: .leading) {
+                            Text(user.name)
+                                .font(.headline)
+                            Text(user.email)
+                                .font(.subheadline)
+                                .foregroundColor(.gray)
+                        }
+                        
+                        Spacer()
+                        
+                        if viewModel.sentRequests.contains(user.id) {
+                            Text("Pending")
+                                .foregroundColor(.gray)
+                                .font(.subheadline)
+                        } else {
+                            Button(action: {
+                                viewModel.sendFriendRequest(to: user)
+                            }) {
+                                Text("Add Friend")
+                                    .foregroundColor(.blue)
                             }
                         }
                     }
-                } else {
-                    ScrollView {
-                        VStack(spacing: 24) {
-                            // Pending Requests
-                            if !viewModel.pendingRequests.isEmpty {
-                                VStack(alignment: .leading, spacing: 12) {
-                                    Text("Friend Requests")
-                                        .font(.headline)
-                                        .padding(.horizontal)
-                                    
-                                    ForEach(viewModel.pendingRequests) { request in
-                                        FriendRequestCard(request: request, viewModel: viewModel)
-                                    }
-                                }
-                            }
-                            
-                            // Friends List
+                }
+            } else {
+                ScrollView {
+                    VStack(spacing: 24) {
+                        // Pending Requests
+                        if !viewModel.pendingRequests.isEmpty {
                             VStack(alignment: .leading, spacing: 12) {
-                                Text("Friends")
+                                Text("Friend Requests")
                                     .font(.headline)
                                     .padding(.horizontal)
                                 
-                                if viewModel.friends.isEmpty {
-                                    Text("No friends yet")
-                                        .foregroundColor(.gray)
-                                        .frame(maxWidth: .infinity, alignment: .center)
-                                        .padding(.vertical, 32)
-                                } else {
-                                    ForEach(viewModel.friends) { friend in
-                                        FriendCard(friend: friend)
-                                    }
+                                ForEach(viewModel.pendingRequests) { request in
+                                    FriendRequestCard(request: request, viewModel: viewModel)
                                 }
                             }
                         }
-                        .padding(.vertical, 16)
-                    }
-                }
-            }
-            .navigationTitle("Friends")
-            .background(Color(.systemGroupedBackground))
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button(action: {
-                        showingSearchResults = true
-                        searchText = ""
-                    }) {
-                        Image(systemName: "person.badge.plus")
-                            .font(.system(size: 18))
-                    }
-                }
-                
-                if showingSearchResults {
-                    ToolbarItem(placement: .navigationBarLeading) {
-                        Button("Cancel") {
-                            showingSearchResults = false
-                            searchText = ""
+                        
+                        // Friends List
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Friends")
+                                .font(.headline)
+                                .padding(.horizontal)
+                            
+                            if viewModel.friends.isEmpty {
+                                Text("No friends yet")
+                                    .foregroundColor(.gray)
+                                    .frame(maxWidth: .infinity, alignment: .center)
+                                    .padding(.vertical, 32)
+                            } else {
+                                ForEach(viewModel.friends) { friend in
+                                    FriendCard(friend: friend)
+                                }
+                            }
                         }
                     }
+                    .padding(.vertical, 16)
                 }
             }
-            .searchable(text: $searchText, isPresented: $showingSearchResults, prompt: "Search users...")
-            .onChange(of: searchText) { _, newValue in
-                if !newValue.isEmpty {
-                    viewModel.searchUsers(query: newValue)
+        }
+        .navigationTitle("Friends")
+        .background(Color(.systemGroupedBackground))
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button(action: {
+                    showingSearchResults = true
+                    searchText = ""
+                }) {
+                    Image(systemName: "person.badge.plus")
+                        .font(.system(size: 18))
                 }
             }
-            .overlay {
-                if viewModel.isLoading {
-                    ProgressView()
-                        .scaleEffect(1.5)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .background(Color.black.opacity(0.1))
+            
+            if showingSearchResults {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") {
+                        showingSearchResults = false
+                        searchText = ""
+                    }
                 }
             }
-            .alert("Error", isPresented: .constant(viewModel.errorMessage != nil)) {
-                Button("OK") {
-                    viewModel.errorMessage = nil
-                }
-            } message: {
-                if let errorMessage = viewModel.errorMessage {
-                    Text(errorMessage)
-                }
+        }
+        .searchable(text: $searchText, isPresented: $showingSearchResults, prompt: "Search users...")
+        .onChange(of: searchText) { _, newValue in
+            if !newValue.isEmpty {
+                viewModel.searchUsers(query: newValue)
+            }
+        }
+        .overlay {
+            if viewModel.isLoading {
+                ProgressView()
+                    .scaleEffect(1.5)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color.black.opacity(0.1))
+            }
+        }
+        .alert("Error", isPresented: .constant(viewModel.errorMessage != nil)) {
+            Button("OK") {
+                viewModel.errorMessage = nil
+            }
+        } message: {
+            if let errorMessage = viewModel.errorMessage {
+                Text(errorMessage)
             }
         }
     }
