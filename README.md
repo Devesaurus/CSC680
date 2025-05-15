@@ -1,7 +1,7 @@
 # CSC680
 Final Project for CSC680 (Mobile App Dev)
 
-My name is Deven Young, and I had a bunch of ideas for this class, such as stratego, connect 4x4, and a bunch of other games. However, after trying to implement these one by one, I realized how unrealistic this was. In the end, I decided upon a "Check in" app which essentially acts as a Calendar app.
+My name is Deven Young, and I had a bunch of ideas for this class, such as stratego, connect 4x4, and a bunch of other games. However, after trying to implement these one by one, I realized how unrealistic this was. In the end, I decided upon a "Check in" app which essentially acts as a Calendar app. The app is connected to a firebase database, which stores user information as well as event information. 
 
 Must have features:
   - Users should be able to create accounts
