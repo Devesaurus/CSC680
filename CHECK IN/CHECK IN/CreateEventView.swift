@@ -10,7 +10,7 @@ struct CreateEventView: View {
     @State private var errorMessage = ""
     @State private var isCreating = false
     @Binding var isPresented: Bool
-    
+    // View for creating an event
     var body: some View {
         NavigationView {
             ScrollView {

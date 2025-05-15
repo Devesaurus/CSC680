@@ -1,5 +1,6 @@
 import SwiftUI
 
+// TO DISPLAY ON THE HOMEPAGE
 struct UpcomingEventCard: View {
     let event: Event
     

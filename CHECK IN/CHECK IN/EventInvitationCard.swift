@@ -1,6 +1,7 @@
 import SwiftUI
 import FirebaseAuth
 
+// TO DISPLAY ON THE HOMEPAGE
 struct EventInvitationCard: View {
     let event: Event
     @ObservedObject var viewModel: EventViewModel

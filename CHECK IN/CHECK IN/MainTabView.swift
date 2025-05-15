@@ -1,17 +1,14 @@
 import SwiftUI
 
 struct MainAppView: View {
-    // MARK: - Environment and State Objects
-    // These are passed from ContentView or initialized if specific to this view tree
-
-    // ViewModel for event-related data and operations
+    
+    // ViewModel for event related data and operations
     @ObservedObject var eventVM: EventViewModel
-    // ViewModel for profile-related data and operations
+    // ViewModel for profile related data and operations
     @ObservedObject var profileVM: ProfileViewModel
 
-    // MARK: - State Bindings
     // These states are controlled by ContentView and passed down
-
+    
     // Binding to control the currently selected tab
     @Binding var selectedTab: Int
     // Binding to control the visibility of the create event sheet/popup
@@ -21,8 +18,6 @@ struct MainAppView: View {
     // Binding to manage the event selected for detail view
     @Binding var selectedEvent: Event?
 
-
-    // MARK: - Body
     var body: some View {
         ZStack {
             // Tabbed interface for main sections of the app
@@ -35,8 +30,7 @@ struct MainAppView: View {
                     Label("Home", systemImage: "house.fill")
                 }
                 .tag(0)
-
-                // Events Tab (assuming PageOneView is your events list)
+                
                 NavigationStack {
                     EventList(viewModel: eventVM)
                 }
@@ -63,51 +57,48 @@ struct MainAppView: View {
                 }
                 .tag(3)
             }
-            .tint(.blue) // Sets the accent color for tab items and other interactive elements
+            .tint(.blue)
             
             // Floating "Create Event" Button
             VStack {
-                Spacer() // Pushes the button to the bottom
+                Spacer()
                 Button(action: {
                     showingCreateEvent = true // Triggers the create event popup
                 }) {
                     Image(systemName: "plus.circle.fill")
                         .font(.system(size: 44))
                         .foregroundColor(.blue)
-                        .background(Color(.systemBackground)) // Ensures button is visible on different backgrounds
+                        .background(Color(.systemBackground))
                         .clipShape(Circle())
                         .shadow(color: .black.opacity(0.1), radius: 5, x: 0, y: 2)
                 }
-                .offset(y: -30) // Adjusts vertical position slightly above the tab bar
+                .offset(y: -30)
             }
             
-            // "Create Event" Popup/Modal View
+            // "Create Event" Popup View
             // This section is displayed conditionally when showingCreateEvent is true
             if showingCreateEvent {
-                // Semi-transparent background overlay
                 Color.black.opacity(0.4)
-                    .ignoresSafeArea()
-                    .onTapGesture {
-                        showingCreateEvent = false // Dismiss popup on background tap
-                    }
+                .ignoresSafeArea()
+                .onTapGesture {
+                showingCreateEvent = false // Dismiss popup on background tap
+            }
                 
                 // The actual view for creating an event
-                CreateEventView(viewModel: eventVM, isPresented: $showingCreateEvent)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity) // Allows it to take up modal space
+            CreateEventView(viewModel: eventVM, isPresented: $showingCreateEvent)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(Color(.systemBackground))
                     .cornerRadius(20)
-                    .padding() // Adds padding around the CreateEventView
-                    .transition(.move(edge: .bottom)) // Animation for appearance
-                    .animation(.spring(), value: showingCreateEvent) // Spring animation
+                    .padding()
+                    .transition(.move(edge: .bottom))
+                    .animation(.spring(), value: showingCreateEvent)
                     .onDisappear {
-                        // Ensure state is reset if view disappears for other reasons
-                        if showingCreateEvent { // Check to avoid issues if already set by tap
-                           showingCreateEvent = false
-                        }
+                    // Ensure state is reset if view disappears for other reasons
+                    if showingCreateEvent {
+                       showingCreateEvent = false
                     }
+                }
             }
         }
-        // .onAppear for MainAppView specific logic (if any) could go here.
-        // .sheet for EventDetailView is now handled in ContentView since it's at a higher level.
     }
 }

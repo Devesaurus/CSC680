@@ -13,6 +13,7 @@ struct ContentView: View {
     
     var body: some View {
         Group {
+            // If user is already authenticated
             if authVM.user != nil {
                 if profileVM.isLoading {
                     ProgressView()
@@ -21,6 +22,7 @@ struct ContentView: View {
                         .infinity)
                         .background(Color.black.opacity(0.1))
                 }
+                // Show them the main app view
                 MainAppView(
                     eventVM: eventVM,
                     profileVM: profileVM,
@@ -29,10 +31,12 @@ struct ContentView: View {
                     showingEventDetail: $showingEventDetail,
                     selectedEvent: $selectedEvent
                 )
+            // If user is not authenticated, show them login view
             } else {
                 LoginView()
             }
         }
+        // When a user logs in, change page
         .onChange(of: authVM.user) { _, newUser in
             if newUser != nil {
                 print("Debug: authVM.user changed, user is now logged in. Calling loadProfile.")

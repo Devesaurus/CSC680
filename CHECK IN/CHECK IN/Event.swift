@@ -16,7 +16,7 @@ struct Event: Identifiable, Equatable {
     var acceptedUsers: [String] // Array of users who have accepted invitations
     var checkedInUsers: [String] // Array of users who have checked in
     
-    
+    // TO send to DB
     var dictionary: [String: Any] {
         [
             "name": name,

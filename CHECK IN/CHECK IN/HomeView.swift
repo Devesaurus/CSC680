@@ -8,6 +8,7 @@ struct HomeView: View {
     @ObservedObject var profileVM: ProfileViewModel
     @ObservedObject var eventVM: EventViewModel
     
+    // Home page of the app
     var body: some View {
         NavigationView {
             ScrollView {
@@ -128,6 +129,7 @@ struct HomeView: View {
         }
     }
     
+    // Generate a personalized welcome message
     private var welcomeMessage: String {
         if let firstName = profileVM.profile?.firstName, !firstName.isEmpty {
             return "Welcome, \(firstName)"
