@@ -316,14 +316,14 @@ struct EventDetailView: View {
     var body: some View {
         NavigationView {
             ScrollView {
-                VStack(spacing: 24) {
+                VStack(alignment: .leading, spacing: 0) {
+                    Spacer().frame(height: 8)
                     // Event Header
                     VStack(spacing: 16) {
                         Text(currentEvent.name)
                             .font(.title)
                             .fontWeight(.bold)
                             .multilineTextAlignment(.center)
-                        
                         HStack {
                             Image(systemName: "calendar")
                                 .foregroundColor(.blue)
@@ -332,15 +332,15 @@ struct EventDetailView: View {
                                 .foregroundColor(.secondary)
                         }
                     }
-                    .padding(.top)
-                    
+                    .padding(.top, 24)
+                    .padding(.bottom, 12)
+                    .frame(maxWidth: .infinity, alignment: .center)
                     // Event Description
                     if !currentEvent.description.isEmpty {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Description")
                                 .font(.headline)
                                 .foregroundColor(.secondary)
-                            
                             Text(currentEvent.description)
                                 .font(.body)
                         }
@@ -349,19 +349,23 @@ struct EventDetailView: View {
                         .background(Color(.systemBackground))
                         .cornerRadius(12)
                         .shadow(color: .black.opacity(0.05), radius: 5, x: 0, y: 2)
+                        .padding(.vertical, 12)
                     }
-                    
                     // Event Details
-                    VStack(alignment: .leading, spacing: 16) {
-                        DetailRow(icon: "person.fill", title: "Created By", value: viewModel.getCreatorName(for: currentEvent))
-                        DetailRow(icon: "clock.fill", title: "Created", value: formattedCreatedDate)
-                        DetailRow(icon: "bell.fill", title: "Remind me at", value: currentReminderTime.map(formattedReminderTime) ?? "Never")
+                    HStack {
+                        Spacer()
+                        VStack(alignment: .leading, spacing: 16) {
+                            DetailRow(icon: "person.fill", title: "Created By", value: viewModel.getCreatorName(for: currentEvent))
+                            DetailRow(icon: "clock.fill", title: "Created", value: formattedCreatedDate)
+                            DetailRow(icon: "bell.fill", title: "Remind me at", value: currentReminderTime.map(formattedReminderTime) ?? "Never")
+                        }
+                        .padding()
+                        .background(Color(.systemBackground))
+                        .cornerRadius(12)
+                        .shadow(color: .black.opacity(0.05), radius: 5, x: 0, y: 2)
+                        Spacer()
                     }
-                    .padding()
-                    .background(Color(.systemBackground))
-                    .cornerRadius(12)
-                    .shadow(color: .black.opacity(0.05), radius: 5, x: 0, y: 2)
-                    
+                    .padding(.vertical, 12)
                     // Accept Invitation Button
                     if shouldShowAcceptButton {
                         Button(action: acceptInvitation) {
@@ -380,67 +384,25 @@ struct EventDetailView: View {
                         .cornerRadius(12)
                         .padding(.top)
                         .disabled(isAccepting)
+                        .padding(.vertical, 12)
                     } else if isUserPartOfEvent {
-                        VStack(spacing: 16) {
-                            // Reminder Button
-                            Button(action: {
-                                if currentReminderTime != nil {
-                                    removeReminder()
-                                } else {
-                                    showingReminderSheet = true
-                                }
-                            }) {
-                                HStack {
-                                    Image(systemName: currentReminderTime != nil ? "bell.slash.fill" : "bell.fill")
-                                    Text(currentReminderTime != nil ? "Remove Reminder" : "Set Reminder")
-                                }
-                                .font(.headline)
-                                .frame(maxWidth: .infinity)
-                            }
-                            .padding()
-                            .background(Color.orange)
-                            .foregroundColor(.white)
-                            .cornerRadius(12)
-                            .disabled(isSettingReminder)
-                            
-                            // Remove from Events Button
-                            Button(action: {
-                                showingRemoveAlert = true
-                            }) {
-                                if isRemoving {
-                                    ProgressView()
-                                        .progressViewStyle(CircularProgressViewStyle())
-                                } else {
-                                    Text("Remove from My Events")
-                                        .font(.headline)
-                                        .frame(maxWidth: .infinity)
-                                }
-                            }
-                            .padding()
-                            .background(Color.red)
-                            .foregroundColor(.white)
-                            .cornerRadius(12)
-                            .disabled(isRemoving)
-                            
-                            // Invite Button (only show if user is creator)
-                            if currentEvent.createdBy == Auth.auth().currentUser?.uid {
-                                Button(action: { showingInviteSheet = true }) {
-                                    HStack {
-                                        Image(systemName: "person.badge.plus")
-                                        Text("Invite People")
-                                    }
-                                    .frame(maxWidth: .infinity)
-                                    .padding()
-                                    .background(Color.blue)
-                                    .foregroundColor(.white)
-                                    .cornerRadius(12)
-                                }
-                            }
-                        }
-                        .padding(.top, 32)
+                        EventActionsView(
+                            currentEvent: currentEvent,
+                            viewModel: viewModel,
+                            currentReminderTime: $currentReminderTime,
+                            isSettingReminder: $isSettingReminder,
+                            isRemoving: $isRemoving,
+                            showingRemoveAlert: $showingRemoveAlert,
+                            showingInviteSheet: $showingInviteSheet,
+                            showingReminderSheet: $showingReminderSheet,
+                            errorMessage: $errorMessage,
+                            showingError: $showingError
+                        )
+                        .padding(.vertical, 12)
                     }
                 }
-                .padding()
+                .padding(.horizontal)
+                .padding(.bottom, 24)
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -599,6 +561,202 @@ struct EventDetailView: View {
                     showingError = true
                 }
             }
+        }
+    }
+}
+
+private struct EventActionsView: View {
+    let currentEvent: Event
+    @ObservedObject var viewModel: EventViewModel
+    @Binding var currentReminderTime: Date?
+    @Binding var isSettingReminder: Bool
+    @Binding var isRemoving: Bool
+    @Binding var showingRemoveAlert: Bool
+    @Binding var showingInviteSheet: Bool
+    @Binding var showingReminderSheet: Bool
+    @Binding var errorMessage: String
+    @Binding var showingError: Bool
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            CheckInToggleView(currentEvent: currentEvent, viewModel: viewModel, errorMessage: $errorMessage, showingError: $showingError)
+            VStack(spacing: 12) {
+                // Reminder Button
+                Button(action: {
+                    if currentReminderTime != nil {
+                        removeReminder()
+                    } else {
+                        showingReminderSheet = true
+                    }
+                }) {
+                    HStack {
+                        Image(systemName: currentReminderTime != nil ? "bell.slash.fill" : "bell.fill")
+                        Text(currentReminderTime != nil ? "Remove Reminder" : "Set Reminder")
+                    }
+                    .font(.headline)
+                    .frame(maxWidth: .infinity)
+                }
+                .padding(.vertical, 8)
+                .background(Color.orange)
+                .foregroundColor(.white)
+                .cornerRadius(12)
+                .disabled(isSettingReminder)
+                // Remove from Events Button
+                Button(action: {
+                    showingRemoveAlert = true
+                }) {
+                    if isRemoving {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle())
+                    } else {
+                        Text("Remove from My Events")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+                .padding(.vertical, 8)
+                .background(Color.red)
+                .foregroundColor(.white)
+                .cornerRadius(12)
+                .disabled(isRemoving)
+                // Invite Button (only show if user is creator)
+                if currentEvent.createdBy == Auth.auth().currentUser?.uid {
+                    Button(action: { showingInviteSheet = true }) {
+                        HStack {
+                            Image(systemName: "person.badge.plus")
+                            Text("Invite People")
+                        }
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                    }
+                    .padding(.vertical, 8)
+                    .background(Color.blue)
+                    .foregroundColor(.white)
+                    .cornerRadius(12)
+                }
+            }
+            .padding(.top, 24)
+        }
+        .padding(.top, 32)
+    }
+    
+    private func removeReminder() {
+        isSettingReminder = true
+        Task {
+            do {
+                try await viewModel.removeReminder(for: currentEvent)
+                await MainActor.run {
+                    isSettingReminder = false
+                    currentReminderTime = nil
+                }
+            } catch {
+                await MainActor.run {
+                    isSettingReminder = false
+                    errorMessage = error.localizedDescription
+                    showingError = true
+                }
+            }
+        }
+    }
+}
+
+private struct CheckInToggleView: View {
+    let currentEvent: Event
+    @ObservedObject var viewModel: EventViewModel
+    @Binding var errorMessage: String
+    @Binding var showingError: Bool
+    
+    @State private var isCheckedInLocal: Bool = false
+    @State private var initialized = false
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            Text(isCheckedInLocal ? "Checked In" : "Not Checked In")
+                .font(.headline)
+                .foregroundColor(isCheckedInLocal ? .green : .red)
+                .padding(.bottom, 8)
+            HStack(spacing: 24) {
+                // Check In Button
+                Button(action: {
+                    isCheckedInLocal = true // Optimistic update
+                    Task {
+                        do {
+                            try await viewModel.checkInToEvent(currentEvent)
+                        } catch {
+                            await MainActor.run {
+                                isCheckedInLocal = false // Revert if failed
+                                errorMessage = error.localizedDescription
+                                showingError = true
+                            }
+                        }
+                    }
+                }) {
+                    Image(systemName: isCheckedInLocal ? "checkmark.circle.fill" : "checkmark.circle")
+                        .font(.system(size: 36, weight: .bold))
+                        .foregroundColor(isCheckedInLocal ? .white : .green)
+                        .padding()
+                        .background(isCheckedInLocal ? Color.green : Color(.systemGray6))
+                        .clipShape(Circle())
+                        .overlay(
+                            Circle().stroke(isCheckedInLocal ? Color.green : Color.gray, lineWidth: 2)
+                        )
+                }
+                .disabled(isCheckedInLocal)
+                .accessibilityLabel("Check In")
+                // Revoke Check-In Button
+                Button(action: {
+                    isCheckedInLocal = false // Optimistic update
+                    Task {
+                        do {
+                            try await viewModel.revokeCheckInFromEvent(currentEvent)
+                        } catch {
+                            await MainActor.run {
+                                isCheckedInLocal = true // Revert if failed
+                                errorMessage = error.localizedDescription
+                                showingError = true
+                            }
+                        }
+                    }
+                }) {
+                    Image(systemName: isCheckedInLocal ? "xmark.circle" : "xmark.circle.fill")
+                        .font(.system(size: 36, weight: .bold))
+                        .foregroundColor(isCheckedInLocal ? .red : .white)
+                        .padding()
+                        .background(isCheckedInLocal ? Color(.systemGray6) : Color.red)
+                        .clipShape(Circle())
+                        .overlay(
+                            Circle().stroke(isCheckedInLocal ? Color.gray : Color.red, lineWidth: 2)
+                        )
+                }
+                .disabled(!isCheckedInLocal)
+                .accessibilityLabel("Revoke Check-In")
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
+            .padding(.horizontal)
+            .background(Color(.systemGray6))
+            .cornerRadius(14)
+            .shadow(color: .black.opacity(0.04), radius: 4, x: 0, y: 2)
+        }
+        .onAppear {
+            if !initialized {
+                if let currentUserId = Auth.auth().currentUser?.uid {
+                    isCheckedInLocal = currentEvent.checkedInUsers.contains(currentUserId)
+                } else {
+                    isCheckedInLocal = false
+                }
+                initialized = true
+            }
+        }
+        .onChange(of: currentEvent.checkedInUsers) { _, _ in
+            if let currentUserId = Auth.auth().currentUser?.uid {
+                isCheckedInLocal = currentEvent.checkedInUsers.contains(currentUserId)
+            } else {
+                isCheckedInLocal = false
+            }
+        }
+        .onChange(of: currentEvent.id) { _, _ in
+            initialized = false // Re-initialize when event changes
         }
     }
 }

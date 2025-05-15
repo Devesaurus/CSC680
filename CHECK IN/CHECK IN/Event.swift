@@ -14,6 +14,7 @@ struct Event: Identifiable, Equatable {
     var creatorName: String? // Creator's name
     var invitedUsers: [String] // Array to store invited users
     var acceptedUsers: [String] // Array of users who have accepted invitations
+    var checkedInUsers: [String] // Array of users who have checked in
     
     
     var dictionary: [String: Any] {
@@ -24,7 +25,8 @@ struct Event: Identifiable, Equatable {
             "createdBy": createdBy,
             "createdAt": Timestamp(date: createdAt),
             "invitedUsers": invitedUsers,
-            "acceptedUsers": acceptedUsers
+            "acceptedUsers": acceptedUsers,
+            "checkedInUsers": checkedInUsers
         ]
     }
     
@@ -39,6 +41,7 @@ struct Event: Identifiable, Equatable {
         
         let invitedUsers = dict["invitedUsers"] as? [String] ?? []
         let acceptedUsers = dict["acceptedUsers"] as? [String] ?? []
+        let checkedInUsers = dict["checkedInUsers"] as? [String] ?? []
         
         return Event(
             id: id,
@@ -49,7 +52,8 @@ struct Event: Identifiable, Equatable {
             createdAt: createdAt,
             creatorName: nil,
             invitedUsers: invitedUsers,
-            acceptedUsers: acceptedUsers
+            acceptedUsers: acceptedUsers,
+            checkedInUsers: checkedInUsers
         )
     }
     
@@ -62,7 +66,8 @@ struct Event: Identifiable, Equatable {
                lhs.createdAt == rhs.createdAt &&
                lhs.creatorName == rhs.creatorName &&
                lhs.invitedUsers == rhs.invitedUsers &&
-               lhs.acceptedUsers == rhs.acceptedUsers
+               lhs.acceptedUsers == rhs.acceptedUsers &&
+               lhs.checkedInUsers == rhs.checkedInUsers
     }
 }
 
@@ -115,7 +120,8 @@ class EventViewModel: ObservableObject {
             createdAt: Date(),
             creatorName: nil,
             invitedUsers: [], // Initialize with empty array of invited users
-            acceptedUsers: [] // Initialize with empty array of accepted users
+            acceptedUsers: [], // Initialize with empty array of accepted users
+            checkedInUsers: [] // Initialize with empty array of checked in users
         )
         
         try await db.collection("events").document(event.id).setData(event.dictionary)
@@ -231,9 +237,6 @@ class EventViewModel: ObservableObject {
         // 1. If the current user is the creator, their leaving implies deleting the event.
         // 2. OR If the event has no specific creator (creatorId is nil or empty) AND no one is accepted or invited, it's orphaned.
         let isCreatorLeaving = creatorId == currentUserId
-        let isOrphanedWithNoAttendees = (creatorId == nil || creatorId!.isEmpty) && currentAcceptedUsers.isEmpty && currentInvitedUsers.isEmpty
-        // More precise: Delete if creator leaves, OR if it's orphaned (no creator AND no attendees/invitees)
-        // OR if it's not created by anyone, and last person leaves. The previous logic covered this, let's stick to creator leaving or truly orphaned for clarity
         
         var shouldDeleteEvent = false
         if isCreatorLeaving {
@@ -561,6 +564,28 @@ class EventViewModel: ObservableObject {
     // Removes local notification for an event
     private func removeLocalNotification(for event: Event) {
         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: ["event-\(event.id)"])
+    }
+    
+    // Allows a user to check in to an event
+    func checkInToEvent(_ event: Event) async throws {
+        guard let currentUserId = Auth.auth().currentUser?.uid else {
+            throw NSError(domain: "EventError", code: 1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"])
+        }
+        let eventRef = db.collection("events").document(event.id)
+        try await eventRef.updateData([
+            "checkedInUsers": FieldValue.arrayUnion([currentUserId])
+        ])
+    }
+
+    // Allows a user to revoke their check-in from an event
+    func revokeCheckInFromEvent(_ event: Event) async throws {
+        guard let currentUserId = Auth.auth().currentUser?.uid else {
+            throw NSError(domain: "EventError", code: 1, userInfo: [NSLocalizedDescriptionKey: "User not authenticated"])
+        }
+        let eventRef = db.collection("events").document(event.id)
+        try await eventRef.updateData([
+            "checkedInUsers": FieldValue.arrayRemove([currentUserId])
+        ])
     }
 }
 
